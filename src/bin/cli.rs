@@ -12,7 +12,7 @@ mod helpers {
 
 extern crate tempfile;
 use clap::Parser;
-use llm_rs::api_interface;
+use llm_rs::openai_interface;
 //use llm_rs::json;
 
 use std::env;
@@ -23,8 +23,8 @@ use std::io::Write;
 use std::path::PathBuf; //::{Editor};
                         // mod json;
 
-use api_interface::ApiInterface;
-use api_interface::ModelMode;
+use openai_interface::ApiInterface;
+use openai_interface::ModelMode;
 
 const DEFAULT_MODEL: &str = "text-davinci-003";
 const DEFAULT_TOKENS: u32 = 2_000_u32;
