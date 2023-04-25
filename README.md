@@ -1,4 +1,4 @@
-# A PAckage to INteract with Large Language Models
+# A Package to Interact with Large Language Models
 
 This is only interacting with  [OpenAI's language models](https://api.openai.com/v1/)
 
@@ -76,7 +76,7 @@ The meaning of the prompts change with the mode.
 
 Generate or edit images based on a prompt.
 
- ![_Example Image_]("examples/A line drawing of marilyn monroe.png" "A line drawing of marilyn monroe")
+[_Example Image_]("examples/A line drawing of marilyn monroe.png" "A line drawing of marilyn monroe")
 
 Enter Image mode with the meta command: `! m image [image to edit]`.  If you provide an image to edit "ImageEdit" mode is entered instead, and the supplied image is edited.
 
