@@ -93,6 +93,7 @@ pub struct ApiInterface<'a> {
 
     /// If this is > 0 output status messages.  Information about
     /// queries, responses, etcetera.
+    /// TODO Does not belomg here.  Should be in code usig this struct
     pub verbose: usize,
 
     /// The secret key from OpenAI
@@ -110,19 +111,21 @@ pub struct ApiInterface<'a> {
     /// The mode of use
     pub model_mode: ModelMode,
 
-    /// Some models keep state here.  (chat)
+    /// Chat keeps its state here.
     pub context: Vec<String>,
 
     /// The chat model system prompt
     pub system_prompt: String,
 
-    /// The image model URL for the image that we are paying attention to
+    /// The image model URL for the image that we are paying attention
+    /// to.  Openai generated images
     pub focus_image_url: Option<String>,
 
-    /// Image to use with image_edit mode
+    /// Image to use with image_edit mode.  User supplied or copied
+    /// from `focus_image_url`
     pub image: Option<PathBuf>,
 
-    /// Mask to use with image_edit mode
+    /// Mask to use with image_edit mode.
     pub mask: Option<PathBuf>,
 }
 
