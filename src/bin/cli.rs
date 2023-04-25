@@ -137,29 +137,7 @@ fn process_meta(prompt: &str, api_interface: &mut ApiInterface) -> rustyline::Re
                     response_text = format!("{:?}", api_interface);
                 } else {
                     // Display the parameters
-                    response_text = format!(
-                        "Mode: {:?}\n\
-		     Temperature: {}\n\
-		     Model: {}\n\
-		     Tokens: {}\n\
-		     Verbosity: {}\n\
-		     Context length: {}\n\
-		     System prompt: {}\n\
-		     Image focus URI Set: {}\n\
-		     Mask: {:?}\n",
-                        api_interface.model_mode,
-                        api_interface.temperature,
-                        api_interface.model,
-                        api_interface.tokens,
-                        api_interface.verbose,
-                        api_interface.context.len(),
-                        api_interface.system_prompt,
-                        api_interface.focus_image_url.is_some(),
-                        match &api_interface.mask {
-                            Some(pb) => pb.display().to_string(),
-                            None => "<None>".to_string(),
-                        },
-                    );
+                    response_text = format!("{api_interface}");
                 }
             }
             "md" => {

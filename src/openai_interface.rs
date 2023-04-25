@@ -11,6 +11,8 @@ use reqwest::blocking::Client;
 use reqwest::blocking::ClientBuilder;
 use reqwest::blocking::RequestBuilder;
 use serde_json::{from_str, json, Value};
+use std::fmt;
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -89,6 +91,10 @@ pub struct ApiInterface<'a> {
     /// TODO: Replace this reqwest::blocking::Client with calls to Curl
     client: Client,
 
+    /// If this is > 0 output status messages.  Information about
+    /// queries, responses, etcetera.
+    pub verbose: usize,
+
     /// The secret key from OpenAI
     api_key: &'a str,
 
@@ -103,10 +109,6 @@ pub struct ApiInterface<'a> {
 
     /// The mode of use
     pub model_mode: ModelMode,
-
-    /// If this is > 0 output status messages.  Information about
-    /// queries, responses, etcetera.
-    pub verbose: usize,
 
     /// Some models keep state here.  (chat)
     pub context: Vec<String>,
@@ -123,6 +125,36 @@ pub struct ApiInterface<'a> {
     /// Mask to use with image_edit mode
     pub mask: Option<PathBuf>,
 }
+
+impl Display for ApiInterface<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Mode: {:?}\n\
+		     Temperature: {}\n\
+		     Model: {}\n\
+		     Tokens: {}\n\
+		     Verbosity: {}\n\
+		     Context length: {}\n\
+		     System prompt: {}\n\
+		     Image focus URI Set: {}\n\
+		     Mask: {:?}\n",
+            self.model_mode,
+            self.temperature,
+            self.model,
+            self.tokens,
+            self.verbose,
+            self.context.len(),
+            self.system_prompt,
+            self.focus_image_url.is_some(),
+            match &self.mask {
+                Some(pb) => pb.display().to_string(),
+                None => "<None>".to_string(),
+            },
+        )
+    }
+}
+
 impl<'a> ApiInterface<'_> {
     pub fn new(
         api_key: &'a str,
