@@ -14,8 +14,6 @@ use serde_json::{from_str, json, Value};
 use std::path::PathBuf;
 use std::time::Instant;
 
-//use tempfile::Builder;
-//use reqwest::blocking::RequestBuilder;
 use reqwest::header::HeaderMap;
 use reqwest::StatusCode;
 use std::collections::HashMap;
@@ -68,24 +66,30 @@ impl std::fmt::Display for ModelMode {
         write!(f, "{str}")
     }
 }
-impl ModelMode {
-    pub fn from_str(mode: &str) -> Option<ModelMode> {
+
+#[derive(Debug)]
+pub struct ModelModeParseErr;
+
+impl std::str::FromStr for ModelMode {
+    type Err = ModelModeParseErr;
+    fn from_str(mode: &str) -> Result<Self, Self::Err> {
         match mode {
-            "completions" => Some(ModelMode::Completions),
-            "chat" => Some(ModelMode::Chat),
-            "image" => Some(ModelMode::Image),
-            "image_edit" => Some(ModelMode::ImageEdit),
-            _ => None,
+            "completions" => Ok(ModelMode::Completions),
+            "chat" => Ok(ModelMode::Chat),
+            "image" => Ok(ModelMode::Image),
+            "image_edit" => Ok(ModelMode::ImageEdit),
+            _ => Err(ModelModeParseErr),
         }
     }
 }
 
+#[derive(Debug)]
 pub struct ApiInterface<'a> {
     /// Handles the communications with OpenAI
     /// TODO: Replace this reqwest::blocking::Client with calls to Curl
     client: Client,
 
-    /// The secret key from OpenAI to access the
+    /// The secret key from OpenAI
     api_key: &'a str,
 
     /// Restricts the amount of text returned

@@ -5,6 +5,7 @@ use rustyline::hint::HistoryHinter;
 use rustyline::history::FileHistory;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Cmd, CompletionType, Config, EditMode, Editor, Event, EventHandler, KeyEvent};
+use std::str::FromStr;
 extern crate llm_rs;
 mod helpers {
     pub mod my_helper;
@@ -13,7 +14,6 @@ mod helpers {
 extern crate tempfile;
 use clap::Parser;
 use llm_rs::openai_interface;
-//use llm_rs::json;
 
 use std::env;
 use std::env::current_dir;
@@ -133,9 +133,12 @@ fn process_meta(prompt: &str, api_interface: &mut ApiInterface) -> rustyline::Re
         // Handle commands here
         match cmd {
             "p" => {
-                // Display the parameters
-                response_text = format!(
-                    "Mode: {:?}\n\
+                if api_interface.verbose > 1 {
+                    response_text = format!("{:?}", api_interface);
+                } else {
+                    // Display the parameters
+                    response_text = format!(
+                        "Mode: {:?}\n\
 		     Temperature: {}\n\
 		     Model: {}\n\
 		     Tokens: {}\n\
@@ -144,19 +147,20 @@ fn process_meta(prompt: &str, api_interface: &mut ApiInterface) -> rustyline::Re
 		     System prompt: {}\n\
 		     Image focus URI Set: {}\n\
 		     Mask: {:?}\n",
-                    api_interface.model_mode,
-                    api_interface.temperature,
-                    api_interface.model,
-                    api_interface.tokens,
-                    api_interface.verbose,
-                    api_interface.context.len(),
-                    api_interface.system_prompt,
-                    api_interface.focus_image_url.is_some(),
-                    match &api_interface.mask {
-                        Some(pb) => pb.display().to_string(),
-                        None => "<None>".to_string(),
-                    },
-                );
+                        api_interface.model_mode,
+                        api_interface.temperature,
+                        api_interface.model,
+                        api_interface.tokens,
+                        api_interface.verbose,
+                        api_interface.context.len(),
+                        api_interface.system_prompt,
+                        api_interface.focus_image_url.is_some(),
+                        match &api_interface.mask {
+                            Some(pb) => pb.display().to_string(),
+                            None => "<None>".to_string(),
+                        },
+                    );
+                }
             }
             "md" => {
                 // Display known models
@@ -410,8 +414,8 @@ fn main() -> rustyline::Result<()> {
 
     // The mode
     let mode: ModelMode = match ModelMode::from_str(cmd_line_opts.mode.as_str()) {
-        Some(m) => m,
-        None => panic!("{} is an invalid mode", cmd_line_opts.mode.as_str()),
+        Ok(m) => m,
+        Err(_) => panic!("{} is an invalid mode", cmd_line_opts.mode.as_str()),
     };
 
     // Keep  record of the conversations in a file called "reply.txt"
