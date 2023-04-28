@@ -91,11 +91,6 @@ pub struct ApiInterface<'a> {
     /// TODO: Replace this reqwest::blocking::Client with calls to Curl
     client: Client,
 
-    /// If this is > 0 output status messages.  Information about
-    /// queries, responses, etcetera.
-    /// TODO Does not belomg here.  Should be in code usig this struct
-    pub verbose: usize,
-
     /// The secret key from OpenAI
     api_key: &'a str,
 
@@ -137,7 +132,6 @@ impl Display for ApiInterface<'_> {
 		     Temperature: {}\n\
 		     Model: {}\n\
 		     Tokens: {}\n\
-		     Verbosity: {}\n\
 		     Context length: {}\n\
 		     System prompt: {}\n\
 		     Image focus URI Set: {}\n\
@@ -146,7 +140,6 @@ impl Display for ApiInterface<'_> {
             self.temperature,
             self.model,
             self.tokens,
-            self.verbose,
             self.context.len(),
             self.system_prompt,
             self.focus_image_url.is_some(),
@@ -180,7 +173,6 @@ impl<'a> ApiInterface<'_> {
             model_mode,
             context: vec![],
             system_prompt: String::new(),
-            verbose: 0,
             focus_image_url: None,
             mask: None,
             image: None,
@@ -194,11 +186,6 @@ impl<'a> ApiInterface<'_> {
             ModelMode::Image => self.image(prompt),
             ModelMode::ImageEdit => self.image_edit(prompt),
         }
-    }
-
-    /// Clear the context used to maintain chat history
-    pub fn clear_context(&mut self) {
-        self.context.clear();
     }
 
     /// Handle image mode prompts
@@ -397,7 +384,6 @@ impl<'a> ApiInterface<'_> {
 
         Ok(format!("{ar}Opening: {}", json.data[0].url.clone()))
     }
-
     /// Documented [here](https://platform.openai.com/docs/api-reference/chat)
     fn chat(&mut self, prompt: &str) -> Result<String, Box<dyn Error>> {
         // An ongoing conversation with the LLM
@@ -436,25 +422,15 @@ impl<'a> ApiInterface<'_> {
         });
 
         // Send the request and get the Json data as a String, convert
-        // into ``ChatRequestInfo``
-        let json: ChatRequestInfo =
-            serde_json::from_str(self.send_curl(&data, uri.as_str())?.as_str())?;
-
+        // into ``ChatRequestInfo`
+        let response_string = self.send_curl(&data, uri.as_str())?;
+        let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
+        let ar = self.after_request(HashMap::new(), Some(json.usage), "")?;
         let content = json.choices[0].message.content.clone();
         self.context.push(prompt.to_string());
         self.context.push(content.clone());
 
-        if self.verbose > 0 {
-            eprintln!(
-                "Conversation: {} turns and {} bytes",
-                self.context.len(),
-                self.context.iter().fold(0, |a, b| {
-                    // Foo bar
-                    a + b.len()
-                })
-            );
-        }
-        Ok(content)
+        Ok(format!("{ar}\n{content}"))
     }
 
     /// [Documented](https://platform.openai.com/docs/api-reference/completions)
@@ -516,7 +492,7 @@ impl<'a> ApiInterface<'_> {
     }
 
     /// Handle the response if the user queries what models there are
-    /// ("> md" prompt)
+    /// ("! md" prompt in cli)
     pub fn model_list(&self) -> Result<Vec<String>, Box<dyn Error>> {
         let uri: String = format!("{}/models", API_URL);
         let response = self
@@ -536,67 +512,58 @@ impl<'a> ApiInterface<'_> {
         // Ok(vec![])
     }
 
-    /// If the verbosity level is set output data about the request
-    /// before it goes out
+    /// Data about the request before it goes out
     fn after_request(
         &self,
         response_headers: HashMap<String, String>,
         usage: Option<crate::json::Usage>,
         extra: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        if self.verbose == 0 {
-            Ok(String::new())
-        } else {
-            let mut result = extra.to_string();
-            let none_err = "<NONE>".to_string();
-            if self.verbose == 1 {
-                let hn = "openai-model";
-                let hv = response_headers.get(hn).unwrap_or(&none_err);
-                result += format!("{hn}: '{hv}'\n",).as_str();
+        let mut result = extra.to_string();
+        let none_err = "<NONE>".to_string();
 
-                let hn = "x-ratelimit-limit-requests";
-                let hv = response_headers.get(hn).unwrap_or(&none_err);
+        let hn = "openai-model";
+        let hv = response_headers.get(hn).unwrap_or(&none_err);
+        result += format!("{hn}: '{hv}'\n",).as_str();
 
-                result += match hv.parse::<u32>() {
-                    Ok(_) => format!("{hn}: {hv}\n",),
-                    Err(err) => {
-                        format!("Cannot parse header: Name({hn}). Error({err}).  Value({hv})\n",)
-                    }
-                }
-                .as_str();
+        let hn = "x-ratelimit-limit-requests";
+        let hv = response_headers.get(hn).unwrap_or(&none_err);
 
-                let hn = "x-ratelimit-remaining-requests";
-                let hv = response_headers.get(hn).unwrap_or(&none_err);
-                result += match hv.parse::<u32>() {
-                    Err(err) => {
-                        format!("Cannot parse header: Name({hn}). Error({err}).  Value({hv})\n",)
-                    }
-
-                    Ok(_) => format!("{hn}: {hv}\n",),
-                }
-                .as_str();
-
-                let hn = "x-ratelimit-reset-requests";
-                let hv = response_headers.get(hn).unwrap_or(&none_err);
-                result += format!("{hn}: {hv}\n",).as_str();
-            } else {
-                result += &response_headers
-                    .into_iter()
-                    .fold(String::new(), |a, b| format!("{a}{} => {}\n", b.0, b.1));
+        result += match hv.parse::<u32>() {
+            Ok(_) => format!("{hn}: {hv}\n",),
+            Err(err) => {
+                format!("Cannot parse header: Name({hn}). Error({err}).  Value({hv})\n",)
             }
-            if let Some(usage) = usage {
-                let prompt_tokens = usage.prompt_tokens;
-                let completion_tokens = usage.completion_tokens;
-                let total_tokens = usage.total_tokens;
-                result = format!(
-                    "{result} Tokens: {prompt_tokens} + {completion_tokens} \
-		     == {total_tokens}\n"
-                );
-            }
-            Ok(result)
         }
+        .as_str();
+
+        let hn = "x-ratelimit-remaining-requests";
+        let hv = response_headers.get(hn).unwrap_or(&none_err);
+        result += match hv.parse::<u32>() {
+            Err(err) => {
+                format!("Cannot parse header: Name({hn}). Error({err}).  Value({hv})\n",)
+            }
+
+            Ok(_) => format!("{hn}: {hv}\n",),
+        }
+        .as_str();
+
+        let hn = "x-ratelimit-reset-requests";
+        let hv = response_headers.get(hn).unwrap_or(&none_err);
+        result += format!("{hn}: {hv}\n",).as_str();
+        if let Some(usage) = usage {
+            let prompt_tokens = usage.prompt_tokens;
+            let completion_tokens = usage.completion_tokens;
+            let total_tokens = usage.total_tokens;
+            result = format!(
+                "{result} Tokens: {prompt_tokens} + {completion_tokens} \
+		     == {total_tokens}\n"
+            );
+        }
+        Ok(result)
     }
 
+    /// Used to adapt headers reported from Reqwest
     fn header_map_to_hash_map(header_map: &HeaderMap) -> HashMap<String, String> {
         let mut hash_map = HashMap::new();
         for (header_name, header_value) in header_map.iter() {
@@ -608,6 +575,11 @@ impl<'a> ApiInterface<'_> {
             }
         }
         hash_map
+    }
+
+    /// Clear the context used to maintain chat history
+    pub fn clear_context(&mut self) {
+        self.context.clear();
     }
 
     /// Send a request, the body of which is coded in `data`, to `uri`.
