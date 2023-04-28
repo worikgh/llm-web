@@ -31,6 +31,7 @@ const DEFAULT_TOKENS: u32 = 2_000_u32;
 const DEFAULT_TEMPERATURE: f32 = 0.9_f32;
 const DEFAULT_MODE: &str = "completions";
 const DEFAULT_RECORD_FILE: &str = "reply.txt";
+const DEFAULT_HISTORY_FILE: &str = "history.txt";
 
 /// Command line argument definitions
 #[derive(Parser, Debug)]
@@ -108,7 +109,7 @@ fn set_up_read_line() -> rustyline::Result<Editor<MyHelper, FileHistory>> {
     read_line.set_helper(Some(h));
     read_line.bind_sequence(KeyEvent::alt('n'), Cmd::HistorySearchForward);
     read_line.bind_sequence(KeyEvent::alt('p'), Cmd::HistorySearchBackward);
-    if read_line.load_history("history.txt").is_err() {
+    if read_line.load_history(DEFAULT_HISTORY_FILE).is_err() {
         println!("No previous history.");
     }
 
@@ -133,12 +134,12 @@ fn process_meta(prompt: &str, api_interface: &mut ApiInterface) -> rustyline::Re
         // Handle commands here
         match cmd {
             "p" => {
-                if api_interface.verbose > 1 {
-                    response_text = format!("{:?}", api_interface);
+                response_text = if api_interface.verbose > 1 {
+                    format!("{:?}", api_interface)
                 } else {
                     // Display the parameters
-                    response_text = format!("{api_interface}");
-                }
+                    format!("{api_interface}")
+                };
             }
             "md" => {
                 // Display known models
@@ -466,7 +467,7 @@ fn main() -> rustyline::Result<()> {
         );
     }
 
-    read_line.append_history("history.txt").unwrap();
+    read_line.append_history(DEFAULT_HISTORY_FILE).unwrap();
     read_line.clear_history().unwrap();
     Ok(())
 }
