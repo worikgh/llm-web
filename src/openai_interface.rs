@@ -1,10 +1,16 @@
+use crate::json::AudioTranscriptionResponse;
 use crate::json::ChatRequestInfo;
 use crate::json::CompletionRequestInfo;
 use crate::json::ImageRequestInfo;
 use crate::json::Message;
 use crate::json::ModelReturned;
-use curl::easy::{Easy, List};
+use curl::easy::Easy;
+use curl::easy::List;
 use image::{ImageFormat, Rgba, RgbaImage};
+// use std::fs::File;
+// use std::io::BufReader;
+use std::io::Write;
+// use multipart::client::lazy::Multipart;
 use reqwest::blocking::get;
 use reqwest::blocking::multipart;
 use reqwest::blocking::Client;
@@ -472,22 +478,81 @@ impl<'a> ApiInterface<'_> {
             };
 
             // The data about the query
-            let choice_count = json.choices.len();
+            // let choice_count = json.choices.len();
             let finish_reason = json.choices[0].finish_reason.as_str();
-            let model = json.model.as_str();
-            //            let usage = json.usage;
-            let extra = format!("[{choice_count}] Reason: {finish_reason}\n{model}\n");
-            self.after_request(
-                Self::header_map_to_hash_map(&headers),
-                Some(json.usage.clone()),
-                extra.as_str(),
-            )?;
+            let extra = if finish_reason != "stop" {
+                "Reason {finish_reason}"
+            } else {
+                ""
+            };
+
             if json.choices[0].text.is_empty() {
                 panic!("Empty json.choices[0].  {:?}", &json);
             } else {
-                response_text = json.choices[0].text.clone();
+                format!(
+                    "{}\n{}",
+                    self.after_request(
+                        Self::header_map_to_hash_map(&headers),
+                        Some(json.usage.clone()),
+                        extra,
+                    )?,
+                    json.choices[0].text.clone()
+                )
             }
-        }
+        };
+        Ok(response_text)
+    }
+
+    /// The audio file `audio_file` is tracscribed.  No `Usage` data
+    /// returned from this endpoint
+    pub fn audio_transcription(&mut self, audio_file: &Path) -> Result<String, Box<dyn Error>> {
+        // Request
+        // curl https://api.openai.com/v1/audio/transcriptions \
+        //   -H "Authorization: Bearer $OPENAI_API_KEY" \
+        //   -H "Content-Type: multipart/form-data" \
+        //   -F file="@/path/to/file/audio.mp3" \
+        //   -F model="whisper-1"
+
+        // Respponse
+        // {
+        //   "text": "Imagine the....that."
+        // }
+
+        let uri = format!("{}/audio/transcriptions", API_URL);
+
+        let file_field = multipart::Part::file(audio_file)?;
+        let model_field = multipart::Part::text("whisper-1");
+        let form = multipart::Form::new()
+            .part("file", file_field)
+            .part("model", model_field);
+
+        // let client = reqwest::blocking::Client::new();
+        let response = self
+            .client
+            .post(uri)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .multipart(form)
+            .send()?;
+
+        let response_text: String = if response.status() != StatusCode::OK {
+            format!(
+                "Failed: Status: {}.\nResponse.path({})",
+                response
+                    .status()
+                    .canonical_reason()
+                    .unwrap_or("Unknown Reason"),
+                response.url().path(),
+            )
+        } else {
+            let headers = response.headers().clone();
+            let json: AudioTranscriptionResponse = response.json()?;
+            format!(
+                "{}\n{}",
+                self.after_request(Self::header_map_to_hash_map(&headers), None, "")?,
+                json.text
+            )
+        };
+
         Ok(response_text)
     }
 

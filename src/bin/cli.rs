@@ -15,16 +15,15 @@ extern crate tempfile;
 use clap::Parser;
 use llm_rs::openai_interface;
 
+use openai_interface::ApiInterface;
+use openai_interface::ModelMode;
 use std::env;
 use std::env::current_dir;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::PathBuf; //::{Editor};
-                        // mod json;
-
-use openai_interface::ApiInterface;
-use openai_interface::ModelMode;
+use std::path::Path;
+use std::path::PathBuf;
 
 const DEFAULT_MODEL: &str = "text-davinci-003";
 const DEFAULT_TOKENS: u32 = 2_000_u32;
@@ -347,6 +346,26 @@ impl CliInterface {
                             format!("Image cleared. Mode: {}", api_interface.model_mode);
                     } else {
                         response_text = "Image cleared".to_string();
+                    }
+                }
+                "a" => {
+                    let file_name: String = meta.collect::<Vec<&str>>().join(" ");
+                    if file_name.is_empty() {
+                        response_text = format!(
+                            "Enter an audio file to transcribe: {}",
+                            current_dir()?.display()
+                        );
+                    } else if PathBuf::from(file_name.as_str()).exists() {
+                        let path = Path::new(file_name.as_str());
+                        response_text = match api_interface.audio_transcription(&path) {
+                            Ok(t) => t,
+                            Err(err) => format!("{err}: Could not transcribe {file_name}"),
+                        };
+                    } else {
+                        response_text = format!(
+                            "{file_name} dose not exist.  Paths relative to {}",
+                            current_dir()?.display()
+                        );
                     }
                 }
                 "mask" => {
