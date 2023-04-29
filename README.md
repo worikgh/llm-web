@@ -76,7 +76,7 @@ The meaning of the prompts change with the mode.
 
 Generate or edit images based on a prompt.
 
-![_Example Image_](examples/A_line_drawing_of_marilyn_monroe.png){:width="50px"}
+![_Example Image_](examples/Lolipop clown in oil painting.  In style of Van Gough.png){:width="50px"}
 
 Enter Image mode with the meta command: `! m image [image to edit]`.  If you provide an image to edit "ImageEdit" mode is entered instead, and the supplied image is edited.
 
