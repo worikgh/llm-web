@@ -19,6 +19,7 @@ use reqwest::blocking::RequestBuilder;
 use serde_json::{from_str, json, Value};
 use std::fmt;
 use std::fmt::Display;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -27,7 +28,6 @@ use reqwest::StatusCode;
 use std::collections::HashMap;
 use std::error::Error;
 use std::io::Read;
-use std::io::Write;
 use std::result::Result;
 
 // URLS:
@@ -128,6 +128,12 @@ pub struct ApiInterface<'a> {
 
     /// Mask to use with image_edit mode.
     pub mask: Option<PathBuf>,
+
+    /// Header cache.  This is used to monitor the headers.  I want to
+    /// see what headers are coming back frmo OpenAI but they clutter
+    /// things.  Cache them here and only report on headers that
+    /// change
+    header_cache: HashMap<String, String>,
 }
 
 impl Display for ApiInterface<'_> {
@@ -169,7 +175,7 @@ impl<'a> ApiInterface<'_> {
             client: ClientBuilder::new()
                 .timeout(std::time::Duration::from_secs(1200))
                 .pool_idle_timeout(None)
-                .connection_verbose(true)
+                .connection_verbose(false)
                 .build()
                 .unwrap(),
             api_key,
@@ -182,6 +188,7 @@ impl<'a> ApiInterface<'_> {
             focus_image_url: None,
             mask: None,
             image: None,
+            header_cache: HashMap::new(),
         }
     }
 
@@ -429,9 +436,9 @@ impl<'a> ApiInterface<'_> {
 
         // Send the request and get the Json data as a String, convert
         // into ``ChatRequestInfo`
-        let response_string = self.send_curl(&data, uri.as_str())?;
+        let (headers, response_string) = self.send_curl(&data, uri.as_str())?;
         let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
-        let ar = self.after_request(HashMap::new(), Some(json.usage), "")?;
+        let ar = self.after_request(headers, Some(json.usage), "")?;
         let content = json.choices[0].message.content.clone();
         self.context.push(prompt.to_string());
         self.context.push(content.clone());
@@ -442,30 +449,31 @@ impl<'a> ApiInterface<'_> {
     /// [Documented](https://platform.openai.com/docs/api-reference/completions)
     /// Takes the `prompt` and sends it to the LLM with no context.
     /// The interface has to manage no state
-    fn completion(&self, prompt: &str) -> Result<String, Box<dyn Error>> {
+    fn completion(&mut self, prompt: &str) -> Result<String, Box<dyn Error>> {
+        let uri: String = format!("{}/completions", API_URL);
+
         let payload =
             CompletionRequestInfo::new(prompt, self.model.as_str(), self.temperature, self.tokens);
-        let uri: String = format!("{}/completions", API_URL);
 
         let response = self
             .client
-            .post(uri.as_str())
-            .header("Content-Type", "application/json")
+            .post(uri)
             .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
             .json(&payload)
             .send()?;
-        let response_text: String;
-        if response.status() != StatusCode::OK {
+
+        let response_text: String = if response.status() != StatusCode::OK {
             // There was some sort of failure.  Probably a network
             // failure
-            response_text = format!(
+            format!(
                 "Failed: Status: {}.\nResponse.path({})",
                 response
                     .status()
                     .canonical_reason()
                     .unwrap_or("Unknown Reason"),
                 response.url().path(),
-            );
+            )
         } else {
             // Got a good response from the LLM
             let response_debug = format!("{:?}", &response);
@@ -577,51 +585,33 @@ impl<'a> ApiInterface<'_> {
         // Ok(vec![])
     }
 
-    /// Data about the request before it goes out
+    /// Data about the request before it goes out.  Cach headers, only
+    /// output changes
     fn after_request(
-        &self,
+        &mut self,
         response_headers: HashMap<String, String>,
         usage: Option<crate::json::Usage>,
         extra: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut result = extra.to_string();
-        let none_err = "<NONE>".to_string();
-
-        let hn = "openai-model";
-        let hv = response_headers.get(hn).unwrap_or(&none_err);
-        result += format!("{hn}: '{hv}'\n",).as_str();
-
-        let hn = "x-ratelimit-limit-requests";
-        let hv = response_headers.get(hn).unwrap_or(&none_err);
-
-        result += match hv.parse::<u32>() {
-            Ok(_) => format!("{hn}: {hv}\n",),
-            Err(err) => {
-                format!("Cannot parse header: Name({hn}). Error({err}).  Value({hv})\n",)
+        for k in response_headers.keys() {
+            if let Some(v) = self.header_cache.get(k) {
+                if v == response_headers.get(k).unwrap() {
+                    continue;
+                }
             }
+            self.header_cache
+                .insert(k.clone(), response_headers.get(k).unwrap().clone());
+            result += &format!("{k}: {}\n", response_headers[k]);
         }
-        .as_str();
 
-        let hn = "x-ratelimit-remaining-requests";
-        let hv = response_headers.get(hn).unwrap_or(&none_err);
-        result += match hv.parse::<u32>() {
-            Err(err) => {
-                format!("Cannot parse header: Name({hn}). Error({err}).  Value({hv})\n",)
-            }
-
-            Ok(_) => format!("{hn}: {hv}\n",),
-        }
-        .as_str();
-
-        let hn = "x-ratelimit-reset-requests";
-        let hv = response_headers.get(hn).unwrap_or(&none_err);
-        result += format!("{hn}: {hv}\n",).as_str();
         if let Some(usage) = usage {
             let prompt_tokens = usage.prompt_tokens;
             let completion_tokens = usage.completion_tokens;
             let total_tokens = usage.total_tokens;
             result = format!(
-                "{result} Tokens: {prompt_tokens} + {completion_tokens} \
+                "{result} Tokens: Prompt({prompt_tokens}) \
+		 + Completion({completion_tokens}) \
 		     == {total_tokens}\n"
             );
         }
@@ -649,7 +639,11 @@ impl<'a> ApiInterface<'_> {
 
     /// Send a request, the body of which is coded in `data`, to `uri`.
     /// Return the Json data as a String
-    fn send_curl(&mut self, data: &serde_json::Value, uri: &str) -> Result<String, Box<dyn Error>> {
+    fn send_curl(
+        &mut self,
+        data: &serde_json::Value,
+        uri: &str,
+    ) -> Result<(HashMap<String, String>, String), Box<dyn Error>> {
         let body = format!("{data}");
 
         let mut body = body.as_bytes();
@@ -662,20 +656,17 @@ impl<'a> ApiInterface<'_> {
         list.append("Content-Type: application/json")?;
         curl_easy.http_headers(list)?;
 
-        // Set type of request
-        curl_easy.post(true)?;
-
         // I am unsure why I have to do this magick incantation
         curl_easy.post_field_size(body.len() as u64)?;
-
-        // Time the process.
-        let start = Instant::now();
 
         // To get the normal output of the server
         let mut output_buffer = Vec::new();
 
         // To get the headers
         let mut header_buffer = Vec::new();
+
+        // Time the process.
+        let start = Instant::now();
 
         {
             // Start a block so `transfer` is destroyed and releases the
@@ -709,16 +700,80 @@ impl<'a> ApiInterface<'_> {
                 }
             })
             .collect();
-        print!(
-            "{}",
-            self.after_request(
-                headers_hm,
-                None,
-                format!("Query Duration: {:?}\n", duration).as_str(), //extra.as_str(),
-            )?
-        );
-        Ok(result)
+        Ok((headers_hm, result))
     }
+
+    ///// An alternative send_curl.  Still looking for the best network
+    ///// interface.  It should not be in this class.
+    // fn form_curl(&self, form: curl::easy::Form, uri: &str) -> Result<String, Box<dyn Error>> {
+    //     let mut curl_easy = Easy::new();
+    //     println!("form_curl({:?}, {uri})", &form);
+    //     curl_easy.url(uri).unwrap();
+    //     let mut list = List::new();
+    //     list.append(format!("Authorization: Bearer {}", self.api_key).as_str())?;
+    //     list.append("Content-Type: application/json")?;
+    //     curl_easy.http_headers(list)?;
+
+    //     println!("Form: {:?}", form);
+    //     curl_easy.httppost(form).unwrap();
+    //     // curl_easy.post(true).unwrap();
+    //     println!("Ready to send: {:?}", curl_easy);
+    //     let mut response_data = Vec::new();
+    //     {
+    //         let mut transfer = curl_easy.transfer();
+    //         transfer
+    //             .write_function(|data| {
+    //                 response_data.extend_from_slice(data);
+    //                 Ok(data.len())
+    //             })
+    //             .unwrap();
+
+    //         transfer.perform()?;
+    //     }
+
+    //     // You can add serde-based processing of parsed JSON data here
+    //     // let response_json: Value = serde_json::from_str(&response_text).unwrap();
+    //     // Perform further processing of JSON data using serde
+    //     let response_text = String::from_utf8(response_data)?;
+    //     Ok(response_text)
+
+    //     // curl_easy
+    //     //     .header_function(|header| {
+    //     //         print!("{}", String::from_utf8_lossy(header));
+    //     //         true
+    //     //     })
+    //     //     .unwrap();
+
+    //     // // To get the normal output of the server
+    //     // let mut output_buffer = Vec::new();
+
+    //     // // To get the headers
+    //     // let mut header_buffer = Vec::new();
+
+    //     // // Time the process.
+    //     // let start = Instant::now();
+
+    //     // {
+    //     //     // Start a block so `transfer` is destroyed and releases the
+    //     //     // borrow it has on `header_buffer` and `output_buffer`
+    //     //     let mut transfer = curl_easy.transfer();
+    //     //     transfer.header_function(|data| {
+    //     //         header_buffer.push(String::from_utf8(data.to_vec()).unwrap());
+    //     //         true
+    //     //     })?;
+    //     //     // transfer.read_function(|buf| Ok(body.read(buf).unwrap_or(0)))?;
+    //     //     transfer.write_function(|data| {
+    //     //         output_buffer.extend_from_slice(data);
+    //     //         Ok(data.len())
+    //     //     })?;
+    //     //     transfer.perform()?;
+    //     // }
+
+    //     // // Made the call, got the output,  Close the timer
+    //     // let duration = start.elapsed();
+    //     // let body = String::from_utf8(output_buffer)?;
+    //     // Ok(body)
+    // }
 }
 
 /// Used to display the image that OpenAI generates.

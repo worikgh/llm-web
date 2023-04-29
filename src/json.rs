@@ -78,6 +78,12 @@ pub struct ChatRequestInfo {
     pub choices: Vec<ChatChoice>,
 }
 
+/// To receive the transcribed text
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AudioTranscriptionResponse {
+    pub text: String,
+}
+
 impl CompletionRequestInfo {
     pub fn new(prompt: &str, model: &str, temperature: f32, max_tokens: u32) -> Self {
         Self {
