@@ -11,6 +11,7 @@ use image::{ImageFormat, Rgba, RgbaImage};
 // use std::io::BufReader;
 use std::io::Write;
 // use multipart::client::lazy::Multipart;
+use crate::model_mode::ModelMode;
 use reqwest::blocking::get;
 use reqwest::blocking::multipart;
 use reqwest::blocking::Client;
@@ -54,42 +55,6 @@ use std::result::Result;
 
 /// Bas URI for requests
 const API_URL: &str = "https://api.openai.com/v1";
-
-/// The modes for the interaction with Open AI
-#[derive(Debug, PartialEq)]
-pub enum ModelMode {
-    Completions,
-    Chat,
-    Image,
-    ImageEdit,
-}
-impl std::fmt::Display for ModelMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = match self {
-            ModelMode::Completions => "completions",
-            ModelMode::Chat => "chat",
-            ModelMode::Image => "image",
-            ModelMode::ImageEdit => "image_edit",
-        };
-        write!(f, "{str}")
-    }
-}
-
-#[derive(Debug)]
-pub struct ModelModeParseErr;
-
-impl std::str::FromStr for ModelMode {
-    type Err = ModelModeParseErr;
-    fn from_str(mode: &str) -> Result<Self, Self::Err> {
-        match mode {
-            "completions" => Ok(ModelMode::Completions),
-            "chat" => Ok(ModelMode::Chat),
-            "image" => Ok(ModelMode::Image),
-            "image_edit" => Ok(ModelMode::ImageEdit),
-            _ => Err(ModelModeParseErr),
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct ApiInterface<'a> {
@@ -198,6 +163,7 @@ impl<'a> ApiInterface<'_> {
             ModelMode::Chat => self.chat(prompt),
             ModelMode::Image => self.image(prompt),
             ModelMode::ImageEdit => self.image_edit(prompt),
+            ModelMode::AudioTranscription => panic!("Unimplemented"),
         }
     }
 
@@ -513,7 +479,12 @@ impl<'a> ApiInterface<'_> {
 
     /// The audio file `audio_file` is tracscribed.  No `Usage` data
     /// returned from this endpoint
-    pub fn audio_transcription(&mut self, audio_file: &Path) -> Result<String, Box<dyn Error>> {
+    /// Get an audio transcription
+    pub fn audio_transcription(
+        &mut self,
+        audio_file: &Path,
+        prompt: Option<&str>,
+    ) -> Result<String, Box<dyn Error>> {
         // Request
         // curl https://api.openai.com/v1/audio/transcriptions \
         //   -H "Authorization: Bearer $OPENAI_API_KEY" \
@@ -530,9 +501,14 @@ impl<'a> ApiInterface<'_> {
 
         let file_field = multipart::Part::file(audio_file)?;
         let model_field = multipart::Part::text("whisper-1");
-        let form = multipart::Form::new()
+        let mut form = multipart::Form::new()
             .part("file", file_field)
             .part("model", model_field);
+        if let Some(prompt) = prompt {
+            let p: String = prompt.to_string();
+            let prompt_field = multipart::Part::text(p);
+            form = form.part("prompt", prompt_field);
+        }
 
         // let client = reqwest::blocking::Client::new();
         let response = self
@@ -685,7 +661,7 @@ impl<'a> ApiInterface<'_> {
         }
 
         // Made the call, got the output,  Close the timer
-        let duration = start.elapsed();
+        let _duration = start.elapsed();
 
         let result = String::from_utf8(output_buffer)?; // Process the output
 

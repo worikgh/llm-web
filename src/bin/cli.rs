@@ -15,8 +15,8 @@ extern crate tempfile;
 use clap::Parser;
 use llm_rs::openai_interface;
 
+use llm_rs::model_mode::ModelMode;
 use openai_interface::ApiInterface;
-use openai_interface::ModelMode;
 use std::env;
 use std::env::current_dir;
 use std::fs::File;
@@ -74,6 +74,8 @@ struct CliInterface {
     history_file: String,
 
     record_file: String,
+
+    audio_file: Option<String>,
 }
 
 impl CliInterface {
@@ -356,11 +358,17 @@ impl CliInterface {
                             current_dir()?.display()
                         );
                     } else if PathBuf::from(file_name.as_str()).exists() {
-                        let path = Path::new(file_name.as_str());
-                        response_text = match api_interface.audio_transcription(&path) {
-                            Ok(t) => t,
-                            Err(err) => format!("{err}: Could not transcribe {file_name}"),
-                        };
+                        api_interface.model_mode = ModelMode::AudioTranscription;
+                        self.audio_file = Some(file_name.clone());
+                        let _path = Path::new(file_name.as_str());
+                        // response_text = match api_interface.audio_transcription(&path) {
+                        //     Ok(t) => t,
+                        //     Err(err) => format!("{err}: Could not transcribe {file_name}"),
+                        // };
+                        response_text = format!(
+                            "Audio Transcription mode.  \
+						 File: {file_name}"
+                        );
                     } else {
                         response_text = format!(
                             "{file_name} dose not exist.  Paths relative to {}",
@@ -421,6 +429,7 @@ fn main() -> rustyline::Result<()> {
         record_file: DEFAULT_RECORD_FILE.to_string(),
         history_file: DEFAULT_HISTORY_FILE.to_string(),
         verbose: 0,
+        audio_file: None,
     };
 
     // API key.  Stored in openai_interface
