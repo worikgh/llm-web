@@ -11,7 +11,6 @@ mod helpers {
     pub mod my_helper;
 }
 
-extern crate tempfile;
 use clap::Parser;
 use llm_rs::openai_interface;
 
