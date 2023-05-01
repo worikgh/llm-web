@@ -6,13 +6,10 @@ use crate::json::Message;
 use crate::json::ModelReturned;
 use curl::easy::Easy;
 use curl::easy::List;
-use image::{ImageFormat, Rgba, RgbaImage};
 // use std::fs::File;
 // use std::io::BufReader;
-use std::io::Write;
+
 // use multipart::client::lazy::Multipart;
-use crate::model_mode::ModelMode;
-use reqwest::blocking::get;
 use reqwest::blocking::multipart;
 use reqwest::blocking::Client;
 use reqwest::blocking::ClientBuilder;
@@ -21,7 +18,6 @@ use serde_json::{from_str, json, Value};
 use std::fmt;
 use std::fmt::Display;
 use std::path::Path;
-use std::path::PathBuf;
 use std::time::Instant;
 
 use reqwest::header::HeaderMap;
@@ -59,7 +55,6 @@ const API_URL: &str = "https://api.openai.com/v1";
 #[derive(Debug)]
 pub struct ApiInterface<'a> {
     /// Handles the communications with OpenAI
-    /// TODO: Replace this reqwest::blocking::Client with calls to Curl
     client: Client,
 
     /// The secret key from OpenAI
@@ -71,28 +66,11 @@ pub struct ApiInterface<'a> {
     /// Influences the predictability/repeatability of the model
     pub temperature: f32,
 
-    /// The model in use
-    pub model: String,
-
-    /// The mode of use
-    pub model_mode: ModelMode,
-
     /// Chat keeps its state here.
     pub context: Vec<String>,
 
     /// The chat model system prompt
     pub system_prompt: String,
-
-    /// The image model URL for the image that we are paying attention
-    /// to.  Openai generated images
-    pub focus_image_url: Option<String>,
-
-    /// Image to use with image_edit mode.  User supplied or copied
-    /// from `focus_image_url`
-    pub image: Option<PathBuf>,
-
-    /// Mask to use with image_edit mode.
-    pub mask: Option<PathBuf>,
 
     /// Header cache.  This is used to monitor the headers.  I want to
     /// see what headers are coming back frmo OpenAI but they clutter
@@ -105,37 +83,20 @@ impl Display for ApiInterface<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "Mode: {:?}\n\
-		     Temperature: {}\n\
-		     Model: {}\n\
+            "Temperature: {}\n\
 		     Tokens: {}\n\
 		     Context length: {}\n\
-		     System prompt: {}\n\
-		     Image focus URI Set: {}\n\
-		     Mask: {:?}\n",
-            self.model_mode,
+		     System prompt: {}",
             self.temperature,
-            self.model,
             self.tokens,
             self.context.len(),
             self.system_prompt,
-            self.focus_image_url.is_some(),
-            match &self.mask {
-                Some(pb) => pb.display().to_string(),
-                None => "<None>".to_string(),
-            },
         )
     }
 }
 
 impl<'a> ApiInterface<'_> {
-    pub fn new(
-        api_key: &'a str,
-        tokens: u32,
-        temperature: f32,
-        model: &'a str,
-        model_mode: ModelMode,
-    ) -> ApiInterface<'a> {
+    pub fn new(api_key: &'a str, tokens: u32, temperature: f32) -> ApiInterface<'a> {
         ApiInterface {
             client: ClientBuilder::new()
                 .timeout(std::time::Duration::from_secs(1200))
@@ -146,335 +107,11 @@ impl<'a> ApiInterface<'_> {
             api_key,
             tokens,
             temperature,
-            model: model.to_string(),
-            model_mode,
+            // model: model.to_string(),
             context: vec![],
             system_prompt: String::new(),
-            focus_image_url: None,
-            mask: None,
-            image: None,
             header_cache: HashMap::new(),
         }
-    }
-
-    pub fn send_prompt(&mut self, prompt: &str) -> Result<String, Box<dyn Error>> {
-        match self.model_mode {
-            ModelMode::Completions => self.completion(prompt),
-            ModelMode::Chat => self.chat(prompt),
-            ModelMode::Image => self.image(prompt),
-            ModelMode::ImageEdit => self.image_edit(prompt),
-            ModelMode::AudioTranscription => panic!("Unimplemented"),
-        }
-    }
-
-    /// Handle image mode prompts
-    fn image(&mut self, prompt: &str) -> Result<String, Box<dyn Error>> {
-        // Endpoint
-        let uri: String = format!("{}/images/generations", API_URL);
-
-        // Payload
-        let data = json!({
-                  "prompt":  prompt,
-                  "size": "1024x1024",
-        });
-
-        // Set up network comms
-        let res = Client::new()
-            .post(uri)
-            .header("Authorization", format!("Bearer {}", self.api_key).as_str())
-            .header("Content-Type", "application/json")
-            .json(&data);
-
-        // Send network request
-        let response = match res.send() {
-            Ok(r) => r,
-            Err(err) => {
-                return Ok(format!("Image: Response::send() failed: '{err}'"));
-            }
-        };
-
-        // Prepare diagnostic data
-        let headers = response.headers().clone();
-        let diagnostics = format!(
-            "{}\n{}",
-            self.after_request(Self::header_map_to_hash_map(&headers), None, "",)?,
-            format!("{:?}", response),
-        );
-
-        if !response.status().is_success() {
-            return Ok(format!("Request failed: {diagnostics}"));
-        }
-
-        // Have a normal result.  Process it
-        let json: ImageRequestInfo = match response.json() {
-            Ok(json) => json,
-            Err(err) => {
-                return Ok(format!(
-                    "Failed to get json. {err} Diagnostics: {diagnostics}"
-                ));
-            }
-        };
-
-        // Display the image for the user.
-        open_url(json.data[0].url.as_str())?;
-
-        // Store the link to the image for refinement
-        self.focus_image_url = Some(json.data[0].url.clone());
-
-        // Success.
-        Ok(format!("Opening: {}", json.data[0].url.clone()))
-    }
-
-    // Editing an image
-    fn image_edit(&mut self, prompt: &str) -> Result<String, Box<dyn Error>> {
-        // Endpoint
-        let uri = format!("{}/images/edits", API_URL);
-
-        // Some timeing.  TODO: Why here, in this function, and not everywhere?
-        let start = Instant::now();
-
-        // Need an image to edit.  If there is an image in `self.image`
-        // prefer that.  Failing that use `self.focus_image_url` In the
-        // second case the image refered to in the url is downloaded and
-        // put into `self.image`
-        match (&self.focus_image_url, &self.image) {
-            (Some(url), None) => {
-                // Get the image to edit from the URL and put it in self.image
-                println!("Get the URL");
-                let mut img_data: Vec<u8> = Vec::new();
-                get(url).unwrap().read_to_end(&mut img_data).unwrap();
-
-                let mut incomming_image_file =
-                    tempfile::Builder::new().suffix(".png").tempfile()?;
-                incomming_image_file.write_all(&img_data)?;
-                println!("Wrote image: {:?}", start.elapsed());
-
-                // Must convert the image
-                // convert otter.png -type TrueColor -define png:color-type=6 otter_rgba.png
-                let img = image::open(incomming_image_file.path())?;
-                // println!("3");
-
-                // Ensure the image has an alpha channel
-                let img_rgba = img.into_rgba8();
-
-                // Save the image with PNG format and an alpha channel (color-type 6)
-                let adjusted_image_file = tempfile::Builder::new().suffix(".png").tempfile()?;
-                self.image = Some(adjusted_image_file.path().to_owned());
-                adjusted_image_file.close()?;
-                // let output_path = adjusted_image_path.into_os_string();
-                // println!("Save converted file: {:?}", output_path);
-                img_rgba.save_with_format(self.image.clone().unwrap(), ImageFormat::Png)?;
-            }
-            (_, Some(_)) => (),
-            (None, None) => {
-                panic!("No image to work with")
-            }
-        };
-
-        // At this point the (path to the) image to edit is at `self.image`
-
-        // Must have a mask.  If none defined use a 1024x1024 mask
-        // (which is not much use...)
-        let mask_path = match self.mask.clone() {
-            Some(f) => f,
-            None => {
-                // A 1024x1024 transparent PNG image to use as a mask
-                // Image dimensions
-                let width = 1024;
-                let height = 1024;
-                let mask_path = tempfile::Builder::new()
-                    .suffix(".png")
-                    .tempfile()?
-                    .path()
-                    .to_path_buf();
-                // Create the transparent RGBA image
-                let transparent_color = Rgba([0, 0, 0, 0]);
-                let img = RgbaImage::from_pixel(width, height, transparent_color);
-                img.save(mask_path.clone()).unwrap();
-                mask_path
-            }
-        };
-        // let mask_path = mask_file.path().to_owned();
-
-        // Prepare the payload to send to OpenAI
-        let form = multipart::Form::new();
-        let form = match form.file("image", self.image.clone().unwrap().as_path()) {
-            Ok(f) => match f.file("mask", mask_path.clone()) {
-                Ok(s) => s
-                    .text("prompt", prompt.to_string())
-                    .text("size", "1024x1024"),
-                Err(err) => {
-                    panic!("{:?}:{}: {err}", mask_path, mask_path.exists())
-                }
-            },
-            Err(err) => {
-                panic!("Err path: {err}")
-            }
-        };
-
-        // Set up network comms
-        let req_build: RequestBuilder = Client::new()
-            .post(uri.as_str())
-            .timeout(std::time::Duration::from_secs(1200))
-            .header("Authorization", format!("Bearer {}", self.api_key).as_str())
-            // .bearer_auth(bearer.as_str())
-            .multipart(form);
-
-        // Send request
-        let response = match req_build.send() {
-            Ok(r) => r,
-            Err(err) => {
-                println!("Failed url: {uri} Err: {err}");
-                return Err(Box::new(err));
-            }
-        };
-
-        let headers = response.headers().clone();
-        let ar = self.after_request(Self::header_map_to_hash_map(&headers), None, "")?;
-        println!("Sent message: {:?}", start.elapsed());
-        if !response.status().is_success() {
-            let json_str = response.text()?;
-            let parsed_json: Result<Value, _> = from_str(json_str.as_str());
-            let fmt = match parsed_json {
-                Ok(j) => j,
-                Err(err) => panic!("{err}"),
-            };
-            return Ok(format!(
-                "{ar}Request failed: {}.",
-                fmt // match  {
-                    //   Ok(j) => j,
-                    //   Err(err) => format!("{err}: Cannot format: {:?}", j),
-                    // }
-            ));
-        }
-        let response_dbg = format!("{:?}", response);
-        // let response_text = response.text()?;
-        // Ok(response_text)
-        let json: ImageRequestInfo = match response.json() {
-            Ok(json) => json,
-            Err(err) => {
-                eprintln!("Failed to get json. {err} Response: {response_dbg}");
-                return Err(Box::new(err));
-            }
-        };
-        open_url(json.data[0].url.as_str())?;
-        self.focus_image_url = Some(json.data[0].url.clone());
-        // mask_file.close().unwrap();
-
-        Ok(format!("{ar}Opening: {}", json.data[0].url.clone()))
-    }
-    /// Documented [here](https://platform.openai.com/docs/api-reference/chat)
-    fn chat(&mut self, prompt: &str) -> Result<String, Box<dyn Error>> {
-        // An ongoing conversation with the LLM
-
-        // endpoint
-        let uri = format!("{}/chat/completions", API_URL);
-
-        // Put the conversation so far in here
-        let mut messages: Vec<Message> = vec![]; // = [Message { role, content }];
-
-        // If here is any context, supply it
-        if self.context.is_empty() {
-            // Conversation starting.  Append system prompt to context
-            messages.push(Message {
-                role: "system".to_string(),
-                content: self.system_prompt.clone(),
-            });
-        } else {
-            for i in 0..self.context.len() {
-                messages.push(Message {
-                    role: "user".to_string(),
-                    content: self.context[i].clone(),
-                });
-            }
-        }
-
-        // Add in the latest installment, the prompt for this function
-        let role = "user".to_string();
-        let content = prompt.to_string();
-        messages.push(Message { role, content });
-
-        // The payload
-        let data = json!({
-            "messages": messages,
-            "model": self.model,
-        });
-
-        // Send the request and get the Json data as a String, convert
-        // into ``ChatRequestInfo`
-        let (headers, response_string) = self.send_curl(&data, uri.as_str())?;
-        let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
-        let ar = self.after_request(headers, Some(json.usage), "")?;
-        let content = json.choices[0].message.content.clone();
-        self.context.push(prompt.to_string());
-        self.context.push(content.clone());
-
-        Ok(format!("{ar}\n{content}"))
-    }
-
-    /// [Documented](https://platform.openai.com/docs/api-reference/completions)
-    /// Takes the `prompt` and sends it to the LLM with no context.
-    /// The interface has to manage no state
-    fn completion(&mut self, prompt: &str) -> Result<String, Box<dyn Error>> {
-        let uri: String = format!("{}/completions", API_URL);
-
-        let payload =
-            CompletionRequestInfo::new(prompt, self.model.as_str(), self.temperature, self.tokens);
-
-        let response = self
-            .client
-            .post(uri)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&payload)
-            .send()?;
-
-        let response_text: String = if response.status() != StatusCode::OK {
-            // There was some sort of failure.  Probably a network
-            // failure
-            format!(
-                "Failed: Status: {}.\nResponse.path({})",
-                response
-                    .status()
-                    .canonical_reason()
-                    .unwrap_or("Unknown Reason"),
-                response.url().path(),
-            )
-        } else {
-            // Got a good response from the LLM
-            let response_debug = format!("{:?}", &response);
-            let headers = response.headers().clone();
-            let json: CompletionRequestInfo = match response.json() {
-                Ok(json) => json,
-                Err(err) => {
-                    panic!("Failed to get json.  {err}\n{response_debug}")
-                }
-            };
-
-            // The data about the query
-            // let choice_count = json.choices.len();
-            let finish_reason = json.choices[0].finish_reason.as_str();
-            let extra = if finish_reason != "stop" {
-                "Reason {finish_reason}"
-            } else {
-                ""
-            };
-
-            if json.choices[0].text.is_empty() {
-                panic!("Empty json.choices[0].  {:?}", &json);
-            } else {
-                format!(
-                    "{}\n{}",
-                    self.after_request(
-                        Self::header_map_to_hash_map(&headers),
-                        Some(json.usage.clone()),
-                        extra,
-                    )?,
-                    json.choices[0].text.clone()
-                )
-            }
-        };
-        Ok(response_text)
     }
 
     /// The audio file `audio_file` is tracscribed.  No `Usage` data
@@ -540,6 +177,261 @@ impl<'a> ApiInterface<'_> {
         Ok(response_text)
     }
 
+    /// Documented [here](https://platform.openai.com/docs/api-reference/chat)
+    pub fn chat(&mut self, prompt: &str, model: &str) -> Result<String, Box<dyn Error>> {
+        // An ongoing conversation with the LLM
+
+        // endpoint
+        let uri = format!("{}/chat/completions", API_URL);
+
+        // Model can be any of: gpt-4, gpt-4-0314, gpt-4-32k,
+        // gpt-4-32k-0314, gpt-3.5-turbo, gpt-3.5-turbo-0301
+        // https://platform.openai.com/docs/models/model-endpoint-compatibility
+
+        // Put the conversation so far in here
+        let mut messages: Vec<Message> = vec![]; // = [Message { role, content }];
+
+        // If here is any context, supply it
+        if self.context.is_empty() {
+            // Conversation starting.  Append system prompt to context
+            messages.push(Message {
+                role: "system".to_string(),
+                content: self.system_prompt.clone(),
+            });
+        } else {
+            for i in 0..self.context.len() {
+                messages.push(Message {
+                    role: "user".to_string(),
+                    content: self.context[i].clone(),
+                });
+            }
+        }
+
+        // Add in the latest installment, the prompt for this function
+        let role = "user".to_string();
+        let content = prompt.to_string();
+        messages.push(Message { role, content });
+
+        // The payload
+        let data = json!({
+            "messages": messages,
+            "model": model,
+        });
+
+        // Send the request and get the Json data as a String, convert
+        // into ``ChatRequestInfo`
+        let (headers, response_string) = self.send_curl(&data, uri.as_str())?;
+        let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
+        let ar = self.after_request(headers, Some(json.usage), "")?;
+        let content = json.choices[0].message.content.clone();
+        self.context.push(prompt.to_string());
+        self.context.push(content.clone());
+
+        Ok(format!("{ar}\n{content}"))
+    }
+
+    /// [Documented](https://platform.openai.com/docs/api-reference/completions)
+    /// Takes the `prompt` and sends it to the LLM with no context.
+    /// The interface has to manage no state
+    pub fn completion(&mut self, prompt: &str, model: &str) -> Result<String, Box<dyn Error>> {
+        let uri: String = format!("{}/completions", API_URL);
+
+        let payload = CompletionRequestInfo::new(prompt, model, self.temperature, self.tokens);
+
+        let response = self
+            .client
+            .post(uri)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()?;
+
+        let response_text: String = if response.status() != StatusCode::OK {
+            // There was some sort of failure.  Probably a network
+            // failure
+            format!(
+                "Failed: Status: {}.\nResponse.path({})",
+                response
+                    .status()
+                    .canonical_reason()
+                    .unwrap_or("Unknown Reason"),
+                response.url().path(),
+            )
+        } else {
+            // Got a good response from the LLM
+            let response_debug = format!("{:?}", &response);
+            let headers = response.headers().clone();
+            let json: CompletionRequestInfo = match response.json() {
+                Ok(json) => json,
+                Err(err) => {
+                    panic!("Failed to get json.  {err}\n{response_debug}")
+                }
+            };
+
+            // The data about the query
+            // let choice_count = json.choices.len();
+            let finish_reason = json.choices[0].finish_reason.as_str();
+            let extra = if finish_reason != "stop" {
+                "Reason {finish_reason}"
+            } else {
+                ""
+            };
+
+            if json.choices[0].text.is_empty() {
+                panic!("Empty json.choices[0].  {:?}", &json);
+            } else {
+                format!(
+                    "{}\n{}",
+                    self.after_request(
+                        Self::header_map_to_hash_map(&headers),
+                        Some(json.usage.clone()),
+                        extra,
+                    )?,
+                    json.choices[0].text.clone()
+                )
+            }
+        };
+        Ok(response_text)
+    }
+
+    /// Handle image mode prompts
+    pub fn image(&mut self, prompt: &str) -> Result<String, Box<dyn Error>> {
+        // Endpoint
+        let uri: String = format!("{}/images/generations", API_URL);
+
+        // Payload
+        let data = json!({
+                  "prompt":  prompt,
+                  "size": "1024x1024",
+        });
+
+        // Set up network comms
+        let res = Client::new()
+            .post(uri)
+            .header("Authorization", format!("Bearer {}", self.api_key).as_str())
+            .header("Content-Type", "application/json")
+            .json(&data);
+
+        // Send network request
+        let response = match res.send() {
+            Ok(r) => r,
+            Err(err) => {
+                return Ok(format!("Image: Response::send() failed: '{err}'"));
+            }
+        };
+
+        // Prepare diagnostic data
+        let headers = response.headers().clone();
+        let diagnostics = format!(
+            "{}\n{}",
+            self.after_request(Self::header_map_to_hash_map(&headers), None, "",)?,
+            format!("{:?}", response),
+        );
+
+        if !response.status().is_success() {
+            return Ok(format!("Request failed: {diagnostics}"));
+        }
+
+        // Have a normal result.  Process it
+        let json: ImageRequestInfo = match response.json() {
+            Ok(json) => json,
+            Err(err) => {
+                return Ok(format!(
+                    "Failed to get json. {err} Diagnostics: {diagnostics}"
+                ));
+            }
+        };
+
+        // Success.
+        Ok(json.data[0].url.clone())
+    }
+
+    // Editing an image.  The mask defines the region to edit
+    // according to the prompt.  ??The prompt describes the whole
+    // image??
+    // https://platform.openai.com/docs/api-reference/images/create-edit
+    pub fn image_edit(
+        &mut self,
+        prompt: &str,
+        image: &Path,
+        mask: &Path,
+    ) -> Result<String, Box<dyn Error>> {
+        // Endpoint
+        let uri = format!("{}/images/edits", API_URL);
+
+        // Some timeing.  TODO: Why here, in this function, and not everywhere?
+        let start = Instant::now();
+
+        // Need an image to edit.  If there is an image in `self.image`
+        // prefer that.  Failing that use `self.focus_image_url` In the
+        // second case the image refered to in the url is downloaded and
+        // put into `self.image`
+
+        // let mask_path = mask_file.path().to_owned();
+
+        // Prepare the payload to send to OpenAI
+        let form = multipart::Form::new();
+        let form = match form.file("image", image.clone()) {
+            Ok(f) => match f.file("mask", mask.clone()) {
+                Ok(s) => s
+                    .text("prompt", prompt.to_string())
+                    .text("size", "1024x1024"),
+                Err(err) => {
+                    panic!("{:?}:{}: {err}", mask, mask.exists())
+                }
+            },
+            Err(err) => {
+                panic!("Err path: {err}")
+            }
+        };
+
+        // Set up network comms
+        let req_build: RequestBuilder = Client::new()
+            .post(uri.as_str())
+            .timeout(std::time::Duration::from_secs(1200))
+            .header("Authorization", format!("Bearer {}", self.api_key).as_str())
+            .multipart(form);
+
+        // Send request
+        let response = match req_build.send() {
+            Ok(r) => r,
+            Err(err) => {
+                println!("Failed url: {uri} Err: {err}");
+                return Err(Box::new(err));
+            }
+        };
+
+        let headers = response.headers().clone();
+        let ar = self.after_request(Self::header_map_to_hash_map(&headers), None, "")?;
+        println!("Sent message: {:?}", start.elapsed());
+        if !response.status().is_success() {
+            let json_str = response.text()?;
+            let parsed_json: Result<Value, _> = from_str(json_str.as_str());
+            let fmt = match parsed_json {
+                Ok(j) => j,
+                Err(err) => panic!("{err}"),
+            };
+            return Ok(format!(
+                "{ar}Request failed: {}.",
+                fmt // match  {
+                    //   Ok(j) => j,
+                    //   Err(err) => format!("{err}: Cannot format: {:?}", j),
+                    // }
+            ));
+        }
+        let response_dbg = format!("{:?}", response);
+        // let response_text = response.text()?;
+        // Ok(response_text)
+        let json: ImageRequestInfo = match response.json() {
+            Ok(json) => json,
+            Err(err) => {
+                eprintln!("Failed to get json. {err} Response: {response_dbg}");
+                return Err(Box::new(err));
+            }
+        };
+
+        Ok(json.data[0].url.clone())
+    }
     /// Handle the response if the user queries what models there are
     /// ("! md" prompt in cli)
     pub fn model_list(&self) -> Result<Vec<String>, Box<dyn Error>> {
@@ -750,15 +642,4 @@ impl<'a> ApiInterface<'_> {
     //     // let body = String::from_utf8(output_buffer)?;
     //     // Ok(body)
     // }
-}
-
-/// Used to display the image that OpenAI generates.
-fn open_url(url: &str) -> Result<(), Box<dyn Error>> {
-    match webbrowser::open(url) {
-        Ok(_) => {
-            eprintln!("Opened in browser");
-            Ok(())
-        }
-        Err(err) => Err(Box::new(err)),
-    }
 }

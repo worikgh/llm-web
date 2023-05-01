@@ -1,11 +1,28 @@
+use directories::ProjectDirs;
 use helpers::my_helper::MyHelper;
+use image::ImageFormat;
+use llm_rs::model_mode::ModelMode;
+use openai_interface::ApiInterface;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
+use reqwest::blocking::get;
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::hint::HistoryHinter;
 use rustyline::history::FileHistory;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Cmd, CompletionType, Config, EditMode, Editor, Event, EventHandler, KeyEvent};
+use std::env;
+use std::env::current_dir;
+use std::error::Error;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::Read;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Instant;
 extern crate llm_rs;
 mod helpers {
     pub mod my_helper;
@@ -13,16 +30,6 @@ mod helpers {
 
 use clap::Parser;
 use llm_rs::openai_interface;
-
-use llm_rs::model_mode::ModelMode;
-use openai_interface::ApiInterface;
-use std::env;
-use std::env::current_dir;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
 
 const DEFAULT_MODEL: &str = "text-davinci-003";
 const DEFAULT_TOKENS: u32 = 2_000_u32;
@@ -75,9 +82,89 @@ struct CliInterface {
     record_file: String,
 
     audio_file: Option<String>,
+
+    model_mode: ModelMode,
+
+    model: String,
+
+    /// The image model URL for the image that we are paying attention
+    /// to.  Openai generated images
+    pub focus_image_url: Option<String>,
+
+    /// Image to use with image_edit mode.  User supplied or copied
+    /// from `focus_image_url`
+    pub image: Option<PathBuf>,
+
+    /// Mask to use with image_edit mode.
+    pub mask: Option<PathBuf>,
 }
 
 impl CliInterface {
+    /// Generate a file to store data locally
+    fn make_file(suffix: &str) -> Result<PathBuf, Box<dyn Error>> {
+        // Get the config directory for the current user in a
+        // platform-specific way
+        let project_dir = ProjectDirs::from("worik", "org", "llm-rs").unwrap();
+        println!("project_dir ({:?})", project_dir);
+
+        // Create the config directory, if it doesn't exist
+        std::fs::create_dir_all(&project_dir.config_dir())?;
+
+        // Generate a random file name
+        let rand_file_name: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(10)
+            .map(char::from)
+            .collect();
+
+        let file_path: PathBuf = project_dir
+            .config_dir()
+            .join(rand_file_name)
+            .with_extension(suffix);
+
+        // Create the file
+        Ok(file_path)
+    }
+
+    /// Called for an image that OpenAI generates.
+    fn process_image_url(&mut self, url: &str) -> Result<(), Box<dyn Error>> {
+        println!("process_image_url({url})");
+        let start = Instant::now();
+
+        // Must convert the image
+        // convert otter.png -type TrueColor -define png:color-type=6 otter_rgba.png
+
+        let mut img_data: Vec<u8> = Vec::new();
+        get(url).unwrap().read_to_end(&mut img_data).unwrap();
+        println!("Down loaded URL: {} bytes", img_data.len());
+
+        let incomming_image_file_path = Self::make_file("png")?;
+        println!("incomming_image_file_path {:?}", incomming_image_file_path);
+        let mut incomming_image_file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(&incomming_image_file_path)?;
+        println!("Created {:?}", incomming_image_file_path);
+        incomming_image_file.write_all(&img_data)?;
+        let img = image::open(&incomming_image_file_path)?;
+        println!("Opened {:?}", incomming_image_file);
+        incomming_image_file.write_all(&img_data)?;
+        println!(
+            "Wrote image: {:?} {:#?}",
+            start.elapsed(),
+            incomming_image_file_path,
+        );
+
+        // Ensure the image has an alpha channel
+        let img_rgba = img.into_rgba8();
+
+        self.image = Some(incomming_image_file_path.as_path().to_owned());
+        img_rgba.save_with_format(self.image.clone().unwrap(), ImageFormat::Png)?;
+        webbrowser::open(self.image.clone().unwrap().as_os_str().to_str().unwrap())?;
+
+        Ok(())
+    }
+
     /// This function was written by Chat-GPT using
     /// text-davinci-003. Justifies the output so no line is longer than
     /// 80 characters by splitting lines on word breaks
@@ -151,29 +238,33 @@ impl CliInterface {
             match cmd {
                 "p" => {
                     response_text = format!(
-                        "{}\nRecord File:{}",
-                        if self.verbose > 1 {
-                            format!("{:?}", api_interface)
-                        } else {
-                            // Display the parameters
-                            format!("{api_interface}")
-                        },
-                        self.record_file
+                        "OpenAI Interface: {api_interface}\nRecord File:{}\nModel: {}\nModel Mode: {}\nImage: {:#?}\nmask: {:#?}\naudio file:{:#?}",
+                        // Display the parameters
+                        self.record_file,
+			self.model,
+			self.model_mode,
+			self.image,
+			self.mask,
+			self.audio_file,
                     );
                 }
                 "md" => {
                     // Display known models
-                    let mut model_list: Vec<String> = api_interface.model_list().unwrap();
+                    let mut model_list: Vec<&str> = self.model_mode.models_available();
                     model_list.sort();
-                    response_text = model_list
-                        .iter()
-                        .fold(String::new(), |a, b| format!("{a}{b}\n"));
+                    response_text = format!(
+                        "Models for mode: {}: {}",
+                        self.model_mode,
+                        model_list
+                            .iter()
+                            .fold(String::new(), |a, b| format!("{a}{b}\n"))
+                    );
                 }
                 "ms" => {
                     // Set a model
                     if let Some(model_name) = meta.next() {
                         response_text = format!("New model: {model_name}");
-                        api_interface.model = model_name.to_string();
+                        self.model = model_name.to_string();
                     } else {
                         response_text = "No model".to_string();
                     }
@@ -186,7 +277,7 @@ impl CliInterface {
                         Some(mode) => match mode {
                             "completions" => {
                                 response_text = "Model mode => Completions\n".to_string();
-                                api_interface.model_mode = ModelMode::Completions;
+                                self.model_mode = ModelMode::Completions;
                             }
                             "chat" => {
                                 // A conversation with the LLM. `system_prompt` sets
@@ -199,7 +290,7 @@ impl CliInterface {
                                     response_text =
                                         "Provide a system prompt for the chat".to_string();
                                 } else {
-                                    api_interface.model_mode = ModelMode::Chat;
+                                    self.model_mode = ModelMode::Chat;
                                     response_text = "Model mode => Chat\n".to_string();
                                     if !system_prompt.is_empty() {
                                         api_interface.system_prompt = system_prompt;
@@ -213,16 +304,16 @@ impl CliInterface {
                                 let file_name: String = meta.collect::<Vec<&str>>().join(" ");
                                 if file_name.is_empty() {
                                     // User is going to get AI to generate the image
-                                    api_interface.model_mode = ModelMode::Image;
+                                    self.model_mode = ModelMode::Image;
                                     response_text = "Model mode => Image\n".to_string();
                                 } else {
                                     // User is supplying an image
                                     if PathBuf::from(file_name.as_str()).exists() {
-                                        api_interface.image = Some(PathBuf::from(file_name));
-                                        api_interface.model_mode = ModelMode::ImageEdit;
+                                        self.image = Some(PathBuf::from(file_name));
+                                        self.model_mode = ModelMode::ImageEdit;
                                         response_text = "Model mode => ImageEdit\n".to_string();
                                     } else {
-                                        api_interface.model_mode = ModelMode::Image;
+                                        self.model_mode = ModelMode::Image;
                                         response_text =
                                         "File: {file_name} does not exist.  Model mode => Image\n"
                                             .to_string();
@@ -231,26 +322,39 @@ impl CliInterface {
                             }
                             "image_edit" => {
                                 // Edit an image.
-                                match api_interface.model_mode {
+                                match self.model_mode {
                                     ModelMode::Image => {
-                                        if api_interface.image.is_none()
-                                            && api_interface.focus_image_url.is_none()
-                                        {
+                                        if self.image.is_none() && self.focus_image_url.is_none() {
                                             response_text = format!(
                                                 "Cannot switch to ImageEdit mode \
-					     from {} mode untill you have created \
-					     an image.  Enter a prompt",
-                                                api_interface.model_mode
+					     from {} mode until you have created \
+					     an image.  Enter a prompt to create an image",
+                                                self.model_mode
+                                            );
+                                        } else if self.mask.is_none() {
+                                            response_text = format!(
+                                                "Cannot switch to ImageEdit mode \
+					     from {} mode until you have created \
+					     a mask.",
+                                                self.model_mode
                                             );
                                         } else {
                                             response_text = "Edit image".to_string();
-                                            api_interface.model_mode = ModelMode::ImageEdit;
+                                            self.model_mode = ModelMode::ImageEdit;
                                         }
                                     }
                                     _ => {
-                                        response_text = format!("Cannot switch to ImageEdit mode from {} mode.  Must be in Image mode", api_interface.model_mode);
+                                        response_text = format!("Cannot switch to ImageEdit mode from {} mode.  Must be in Image mode", self.model_mode);
                                     }
                                 };
+                            }
+                            "audio_transcription" => {
+                                if self.audio_file.is_none() {
+                                    response_text = "Add an audio file before switching to audio_transcription mode".to_string();
+                                } else {
+                                    self.model_mode = ModelMode::AudioTranscription;
+                                    response_text = "Audio Transcription mode".to_string();
+                                }
                             }
                             _ => response_text = format!("{mode} not a Model Mode\n"),
                         },
@@ -259,7 +363,8 @@ impl CliInterface {
 					 completions\n\
 					 chat\n\
 					 image\n\
-					 image_edit\n"
+					 image_edit\n\
+					 audio_transcription\n"
                                 .to_string()
                         }
                     }
@@ -318,7 +423,7 @@ impl CliInterface {
                     }
                 }
                 "sp" => {
-                    if api_interface.model_mode != ModelMode::Chat {
+                    if self.model_mode != ModelMode::Chat {
                         response_text = "This only makes sense in Chat mode".to_string();
                     } else {
                         let system_prompt = meta.collect::<Vec<&str>>().join(" ");
@@ -337,14 +442,13 @@ impl CliInterface {
                 }
                 "ci" => {
                     // Clear `api_imterface.image` and api_interface.miage_focus_url`
-                    api_interface.image = None;
-                    api_interface.focus_image_url = None;
+                    self.image = None;
+                    self.focus_image_url = None;
 
                     // If mode is ImageEdit set it to Image
-                    if api_interface.model_mode == ModelMode::ImageEdit {
+                    if self.model_mode == ModelMode::ImageEdit {
                         //		self.api
-                        response_text =
-                            format!("Image cleared. Mode: {}", api_interface.model_mode);
+                        response_text = format!("Image cleared. Mode: {}", self.model_mode);
                     } else {
                         response_text = "Image cleared".to_string();
                     }
@@ -357,13 +461,9 @@ impl CliInterface {
                             current_dir()?.display()
                         );
                     } else if PathBuf::from(file_name.as_str()).exists() {
-                        api_interface.model_mode = ModelMode::AudioTranscription;
+                        self.model_mode = ModelMode::AudioTranscription;
                         self.audio_file = Some(file_name.clone());
                         let _path = Path::new(file_name.as_str());
-                        // response_text = match api_interface.audio_transcription(&path) {
-                        //     Ok(t) => t,
-                        //     Err(err) => format!("{err}: Could not transcribe {file_name}"),
-                        // };
                         response_text = format!(
                             "Audio Transcription mode.  \
 						 File: {file_name}"
@@ -384,9 +484,8 @@ impl CliInterface {
                             current_dir()?.display()
                         );
                     } else if PathBuf::from(file_name.as_str()).exists() {
-                        api_interface.mask = Some(PathBuf::from(file_name));
-                        response_text =
-                            format!("Mask set to: {:?}", api_interface.mask.clone().unwrap());
+                        self.mask = Some(PathBuf::from(file_name));
+                        response_text = format!("Mask set to: {:?}", self.mask.clone().unwrap());
                     } else {
                         response_text = format!(
                             "{file_name} dose not exist.  Paths relative to {}",
@@ -424,13 +523,6 @@ fn main() -> rustyline::Result<()> {
     // Get the command line options
     let cmd_line_opts = Arguments::parse();
 
-    let mut cli_interface = CliInterface {
-        record_file: DEFAULT_RECORD_FILE.to_string(),
-        history_file: DEFAULT_HISTORY_FILE.to_string(),
-        verbose: 0,
-        audio_file: None,
-    };
-
     // API key.  Stored in openai_interface
     let _key_binding: String;
     let api_key = match cmd_line_opts.api_key.as_deref() {
@@ -457,6 +549,17 @@ fn main() -> rustyline::Result<()> {
         Err(_) => panic!("{} is an invalid mode", cmd_line_opts.mode.as_str()),
     };
 
+    let mut cli_interface = CliInterface {
+        record_file: DEFAULT_RECORD_FILE.to_string(),
+        history_file: DEFAULT_HISTORY_FILE.to_string(),
+        verbose: 0,
+        audio_file: None,
+        model: model.to_string(),
+        model_mode: mode,
+        focus_image_url: None,
+        mask: None,
+        image: None,
+    };
     // The file name of the conversation record
     cli_interface.record_file = cmd_line_opts.record_file;
     // Keep  record of the conversations
@@ -469,7 +572,7 @@ fn main() -> rustyline::Result<()> {
         .unwrap();
     let mut read_line: Editor<MyHelper, FileHistory> = cli_interface.set_up_read_line()?;
     let mut prompt: String;
-    let mut api_interface = ApiInterface::new(api_key, tokens, temperature, model, mode);
+    let mut api_interface = ApiInterface::new(api_key, tokens, temperature);
     if let Some(sp) = cmd_line_opts.system_prompt {
         api_interface.system_prompt = sp;
     }
@@ -509,26 +612,75 @@ fn main() -> rustyline::Result<()> {
             response_text = cli_interface.process_meta(prompt, &mut api_interface)?;
         } else {
             // Send the prompt to the LLM
-            response_text = match api_interface.send_prompt(prompt) {
-                Ok(response) => response,
-                Err(err) => {
-                    format!("Failed call to send_prompt: {err}")
+            response_text = match cli_interface.model_mode {
+                ModelMode::AudioTranscription => {
+                    let prompt_param: Option<&str> = if prompt.len() == 0 {
+                        None
+                    } else {
+                        Some(prompt)
+                    };
+                    match api_interface.audio_transcription(
+                        Path::new(cli_interface.audio_file.as_ref().unwrap().as_str()),
+                        prompt_param,
+                    ) {
+                        Ok(r) => r,
+                        Err(err) => format!("{err}"),
+                    }
+                }
+                ModelMode::Chat => match api_interface.chat(prompt, cli_interface.model.as_str()) {
+                    Ok(r) => r,
+                    Err(err) => format!("{err}"),
+                },
+
+                ModelMode::Completions => {
+                    match api_interface.completion(prompt, cli_interface.model.as_str()) {
+                        Ok(r) => r,
+                        Err(err) => format!("{err}"),
+                    }
+                }
+                ModelMode::Image => match api_interface.image(prompt) {
+                    Ok(url) => {
+                        // Returned a url
+                        // Store the link to the image for refinement
+                        cli_interface.focus_image_url = Some(url);
+                        // Open image
+                        let url: String = cli_interface.focus_image_url.as_ref().unwrap().clone();
+                        match cli_interface.process_image_url(&url) {
+                            Ok(_) => format!("Opened: {url}"),
+                            Err(err) => format!("{err}: Failed to open: {url}"),
+                        }
+                    }
+                    Err(err) => format!("{err}"),
+                },
+                ModelMode::ImageEdit => {
+                    match api_interface.image_edit(
+                        prompt,
+                        cli_interface.image.clone().unwrap().as_path(),
+                        cli_interface.mask.clone().unwrap().as_path(),
+                    ) {
+                        Ok(r) => {
+                            // Open image
+                            match cli_interface.process_image_url(r.as_str()) {
+                                Ok(_) => format!("Opened: {r}"),
+                                Err(err) => format!("{err}: Failed to open: {r}"),
+                            }
+                        }
+                        Err(err) => format!("{err}"),
+                    }
                 }
             };
         }
 
         // Put state dependant logic here to display useful information
         if cli_interface.verbose > 0 {
-            if api_interface.model_mode == ModelMode::Chat {
-                eprintln!(
-                    "Conversation: {} turns and {} bytes",
-                    api_interface.context.len(),
-                    api_interface.context.iter().fold(0, |a, b| {
-                        // Foo bar
-                        a + b.len()
-                    })
-                );
-            }
+            eprintln!(
+                "Conversation: {} turns and {} bytes",
+                api_interface.context.len(),
+                api_interface.context.iter().fold(0, |a, b| {
+                    // Foo bar
+                    a + b.len()
+                })
+            );
         }
 
         _ = conversation_record_file
