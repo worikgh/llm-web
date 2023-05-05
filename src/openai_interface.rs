@@ -371,8 +371,8 @@ impl<'a> ApiInterface<'_> {
 
         // Prepare the payload to send to OpenAI
         let form = multipart::Form::new();
-        let form = match form.file("image", image.clone()) {
-            Ok(f) => match f.file("mask", mask.clone()) {
+        let form = match form.file("image", image) {
+            Ok(f) => match f.file("mask", mask) {
                 Ok(s) => s
                     .text("prompt", prompt.to_string())
                     .text("size", "1024x1024"),
@@ -570,76 +570,4 @@ impl<'a> ApiInterface<'_> {
             .collect();
         Ok((headers_hm, result))
     }
-
-    ///// An alternative send_curl.  Still looking for the best network
-    ///// interface.  It should not be in this class.
-    // fn form_curl(&self, form: curl::easy::Form, uri: &str) -> Result<String, Box<dyn Error>> {
-    //     let mut curl_easy = Easy::new();
-    //     println!("form_curl({:?}, {uri})", &form);
-    //     curl_easy.url(uri).unwrap();
-    //     let mut list = List::new();
-    //     list.append(format!("Authorization: Bearer {}", self.api_key).as_str())?;
-    //     list.append("Content-Type: application/json")?;
-    //     curl_easy.http_headers(list)?;
-
-    //     println!("Form: {:?}", form);
-    //     curl_easy.httppost(form).unwrap();
-    //     // curl_easy.post(true).unwrap();
-    //     println!("Ready to send: {:?}", curl_easy);
-    //     let mut response_data = Vec::new();
-    //     {
-    //         let mut transfer = curl_easy.transfer();
-    //         transfer
-    //             .write_function(|data| {
-    //                 response_data.extend_from_slice(data);
-    //                 Ok(data.len())
-    //             })
-    //             .unwrap();
-
-    //         transfer.perform()?;
-    //     }
-
-    //     // You can add serde-based processing of parsed JSON data here
-    //     // let response_json: Value = serde_json::from_str(&response_text).unwrap();
-    //     // Perform further processing of JSON data using serde
-    //     let response_text = String::from_utf8(response_data)?;
-    //     Ok(response_text)
-
-    //     // curl_easy
-    //     //     .header_function(|header| {
-    //     //         print!("{}", String::from_utf8_lossy(header));
-    //     //         true
-    //     //     })
-    //     //     .unwrap();
-
-    //     // // To get the normal output of the server
-    //     // let mut output_buffer = Vec::new();
-
-    //     // // To get the headers
-    //     // let mut header_buffer = Vec::new();
-
-    //     // // Time the process.
-    //     // let start = Instant::now();
-
-    //     // {
-    //     //     // Start a block so `transfer` is destroyed and releases the
-    //     //     // borrow it has on `header_buffer` and `output_buffer`
-    //     //     let mut transfer = curl_easy.transfer();
-    //     //     transfer.header_function(|data| {
-    //     //         header_buffer.push(String::from_utf8(data.to_vec()).unwrap());
-    //     //         true
-    //     //     })?;
-    //     //     // transfer.read_function(|buf| Ok(body.read(buf).unwrap_or(0)))?;
-    //     //     transfer.write_function(|data| {
-    //     //         output_buffer.extend_from_slice(data);
-    //     //         Ok(data.len())
-    //     //     })?;
-    //     //     transfer.perform()?;
-    //     // }
-
-    //     // // Made the call, got the output,  Close the timer
-    //     // let duration = start.elapsed();
-    //     // let body = String::from_utf8(output_buffer)?;
-    //     // Ok(body)
-    // }
 }
