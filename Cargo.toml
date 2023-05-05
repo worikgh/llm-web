@@ -24,6 +24,8 @@ curl = "0.4.44"
 image = "0.24.6"
 rand = "0.8.5"
 directories = "5.0.1"
+chrono = "0.4.24"
+
 
 
 [[bin]]

@@ -1,3 +1,4 @@
+use chrono::Local;
 use directories::ProjectDirs;
 use helpers::my_helper::MyHelper;
 use image::ImageFormat;
@@ -595,7 +596,14 @@ fn main() -> rustyline::Result<()> {
 
         prompt = input.clone();
         _ = conversation_record_file
-            .write(format!("Q: {}\n", prompt).as_bytes())
+            .write(
+                format!(
+                    "Q: {}\n{}\n",
+                    Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                    prompt
+                )
+                .as_bytes(),
+            )
             .unwrap();
 
         // The response that will be displayed to the user.
@@ -684,7 +692,13 @@ fn main() -> rustyline::Result<()> {
         }
 
         _ = conversation_record_file
-            .write(format!("A: {response_text}\n").as_bytes())
+            .write(
+                format!(
+                    "A: {}\n{response_text}\n",
+                    Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                )
+                .as_bytes(),
+            )
             .unwrap();
         println!(
             "{}",
