@@ -109,7 +109,7 @@ impl CliInterface {
         println!("project_dir ({:?})", project_dir);
 
         // Create the config directory, if it doesn't exist
-        std::fs::create_dir_all(&project_dir.config_dir())?;
+        std::fs::create_dir_all(project_dir.config_dir())?;
 
         // Generate a random file name
         let rand_file_name: String = rand::thread_rng()
@@ -622,7 +622,7 @@ fn main() -> rustyline::Result<()> {
             // Send the prompt to the LLM
             response_text = match cli_interface.model_mode {
                 ModelMode::AudioTranscription => {
-                    let prompt_param: Option<&str> = if prompt.len() == 0 {
+                    let prompt_param: Option<&str> = if prompt.is_empty() {
                         None
                     } else {
                         Some(prompt)

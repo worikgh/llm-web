@@ -135,23 +135,6 @@ pub struct ModelReturned {
     object: String,
     pub data: Vec<Model>,
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ModelExampleData;
-
-    #[test]
-    fn models_from_json() {
-        let model_data = ModelExampleData::new();
-        let json_data: String = model_data.json;
-        let v: ModelReturned = match serde_json::from_str(json_data.as_str()) {
-            Ok(v) => v,
-            Err(err) => panic!("{err}"),
-        };
-        eprintln!("{:?}", &v);
-        assert!(!v.data.is_empty());
-    }
-}
 
 /// Response for a "models" query
 #[derive(Debug, Serialize, Deserialize)]

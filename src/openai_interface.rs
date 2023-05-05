@@ -323,9 +323,9 @@ impl<'a> ApiInterface<'_> {
         // Prepare diagnostic data
         let headers = response.headers().clone();
         let diagnostics = format!(
-            "{}\n{}",
+            "{}\n{:?}",
             self.after_request(Self::header_map_to_hash_map(&headers), None, "",)?,
-            format!("{:?}", response),
+            response,
         );
 
         if !response.status().is_success() {
