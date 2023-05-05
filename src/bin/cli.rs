@@ -13,6 +13,7 @@ use rustyline::hint::HistoryHinter;
 use rustyline::history::FileHistory;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Cmd, CompletionType, Config, EditMode, Editor, Event, EventHandler, KeyEvent};
+use std::collections::HashMap;
 use std::env;
 use std::env::current_dir;
 use std::error::Error;
@@ -98,6 +99,12 @@ struct CliInterface {
 
     /// Mask to use with image_edit mode.
     pub mask: Option<PathBuf>,
+
+    /// Header cache.  This is used to monitor the headers.  I want to
+    /// see what headers are coming back frmo OpenAI but they clutter
+    /// things.  Cache them here and only report on headers that
+    /// change
+    header_cache: HashMap<String, String>,
 }
 
 impl CliInterface {
@@ -269,6 +276,15 @@ impl CliInterface {
                     } else {
                         response_text = "No model".to_string();
                     }
+                }
+                "ml" => {
+                    response_text = "Modes\ncompletions\n\t\
+					 chat\n\t\
+					 image\n\t\
+					 image_edit\n\t\
+					 audio_transcription\n\t\
+					 "
+                    .to_string()
                 }
                 "m" => {
                     // Set the mode (effectively the API endpoint at OpenAI
@@ -499,6 +515,7 @@ impl CliInterface {
 		p  Display settings\n\
 		md Display all available models\n\
 		ms <model> Change the current model\n\
+		ml List modes\
 		m  <mode> Change mode (API endpoint\n\
 		cd Display context (for chat)\n\
 		cc Clear context\n\
@@ -506,7 +523,9 @@ impl CliInterface {
 		k  Set max tokens for completions\n\
 		t  Set temperature for completions\n\
 		sp Set system prompt (after `! cc`\n\
+		ci Clear image\
 		mask <path> Set the mask to use in image edit mode.  A 1024x1024 PNG with transparent mask\n\
+		a <path> Audio file for transcription
 		ci CLear the image stored for editing
  		?  This text\n"
                         .to_string()
@@ -518,9 +537,40 @@ impl CliInterface {
         }
         Ok(response_text)
     }
+
+    /// Data about the request before it goes out.  Cach headers, only
+    /// output changes
+    pub fn after_request(
+        &mut self,
+        response_headers: HashMap<String, String>,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let mut result = "".to_string();
+        for k in response_headers.keys() {
+            if let Some(v) = self.header_cache.get(k) {
+                if v == response_headers.get(k).unwrap() {
+                    continue;
+                }
+            }
+            self.header_cache
+                .insert(k.clone(), response_headers.get(k).unwrap().clone());
+            result += &format!("{k}: {}\n", response_headers[k]);
+        }
+
+        // if let Some(usage) = usage {
+        //     let prompt_tokens = usage.prompt_tokens;
+        //     let completion_tokens = usage.completion_tokens;
+        //     let total_tokens = usage.total_tokens;
+        //     result = format!(
+        //         "{result} Tokens: Prompt({prompt_tokens}) \
+        // 	 + Completion({completion_tokens}) \
+        // 	     == {total_tokens}\n"
+        //     );
+        // }
+        Ok(result)
+    }
 }
 
-fn main() -> rustyline::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     // Get the command line options
     let cmd_line_opts = Arguments::parse();
 
@@ -560,6 +610,7 @@ fn main() -> rustyline::Result<()> {
         focus_image_url: None,
         mask: None,
         image: None,
+        header_cache: HashMap::new(),
     };
     // The file name of the conversation record
     cli_interface.record_file = cmd_line_opts.record_file;
@@ -631,26 +682,30 @@ fn main() -> rustyline::Result<()> {
                         Path::new(cli_interface.audio_file.as_ref().unwrap().as_str()),
                         prompt_param,
                     ) {
-                        Ok(r) => r,
+                        Ok(r) => {
+                            format!("{}\n{}", cli_interface.after_request(r.headers)?, r.body,)
+                        }
                         Err(err) => format!("{err}"),
                     }
                 }
                 ModelMode::Chat => match api_interface.chat(prompt, cli_interface.model.as_str()) {
-                    Ok(r) => r,
+                    Ok(r) => format!("{}\n{}", cli_interface.after_request(r.headers)?, r.body,),
                     Err(err) => format!("{err}"),
                 },
 
                 ModelMode::Completions => {
                     match api_interface.completion(prompt, cli_interface.model.as_str()) {
-                        Ok(r) => r,
+                        Ok(r) => {
+                            format!("{}\n{}", cli_interface.after_request(r.headers)?, r.body,)
+                        }
                         Err(err) => format!("{err}"),
                     }
                 }
                 ModelMode::Image => match api_interface.image(prompt) {
-                    Ok(url) => {
+                    Ok(r) => {
                         // Returned a url
                         // Store the link to the image for refinement
-                        cli_interface.focus_image_url = Some(url);
+                        cli_interface.focus_image_url = Some(r.body);
                         // Open image
                         let url: String = cli_interface.focus_image_url.as_ref().unwrap().clone();
                         match cli_interface.process_image_url(&url) {
@@ -668,9 +723,9 @@ fn main() -> rustyline::Result<()> {
                     ) {
                         Ok(r) => {
                             // Open image
-                            match cli_interface.process_image_url(r.as_str()) {
-                                Ok(_) => format!("Opened: {r}"),
-                                Err(err) => format!("{err}: Failed to open: {r}"),
+                            match cli_interface.process_image_url(r.body.as_str()) {
+                                Ok(_) => format!("Opened: {}", r.body),
+                                Err(err) => format!("{err}: Failed to open: {}", r.body),
                             }
                         }
                         Err(err) => format!("{err}"),
@@ -700,15 +755,13 @@ fn main() -> rustyline::Result<()> {
                 .as_bytes(),
             )
             .unwrap();
-        println!(
-            "{}",
-            response_text
-                .split_terminator('\n')
-                .fold(String::new(), |a, b| format!(
-                    "{a}{}\n",
-                    CliInterface::justify_string(b)
-                ))
-        );
+
+        let out_v: Vec<&str> = response_text.split_terminator('\n').collect();
+        let mut output = String::new();
+        for w in out_v {
+            output = format!("{output}\n{}", CliInterface::justify_string(w));
+        }
+        println! {"{output}"};
     }
 
     read_line

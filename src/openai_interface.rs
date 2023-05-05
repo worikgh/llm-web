@@ -1,9 +1,13 @@
+use crate::api_error::ApiError;
+use crate::api_error::ApiErrorType;
+use crate::api_result::ApiResult;
 use crate::json::AudioTranscriptionResponse;
 use crate::json::ChatRequestInfo;
 use crate::json::CompletionRequestInfo;
 use crate::json::ImageRequestInfo;
 use crate::json::Message;
 use crate::json::ModelReturned;
+use crate::json::Usage;
 use curl::easy::Easy;
 use curl::easy::List;
 // use std::fs::File;
@@ -14,7 +18,8 @@ use reqwest::blocking::multipart;
 use reqwest::blocking::Client;
 use reqwest::blocking::ClientBuilder;
 use reqwest::blocking::RequestBuilder;
-use serde_json::{from_str, json, Value};
+use serde_json::json;
+// use serde_json::{from_str, json, Value};
 use std::fmt;
 use std::fmt::Display;
 use std::path::Path;
@@ -121,7 +126,7 @@ impl<'a> ApiInterface<'_> {
         &mut self,
         audio_file: &Path,
         prompt: Option<&str>,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<ApiResult, Box<dyn Error>> {
         // Request
         // curl https://api.openai.com/v1/audio/transcriptions \
         //   -H "Authorization: Bearer $OPENAI_API_KEY" \
@@ -155,6 +160,7 @@ impl<'a> ApiInterface<'_> {
             .multipart(form)
             .send()?;
 
+        let headers = Self::header_map_to_hash_map(response.headers());
         let response_text: String = if response.status() != StatusCode::OK {
             format!(
                 "Failed: Status: {}.\nResponse.path({})",
@@ -165,20 +171,14 @@ impl<'a> ApiInterface<'_> {
                 response.url().path(),
             )
         } else {
-            let headers = response.headers().clone();
-            let json: AudioTranscriptionResponse = response.json()?;
-            format!(
-                "{}\n{}",
-                self.after_request(Self::header_map_to_hash_map(&headers), None, "")?,
-                json.text
-            )
+            response.json::<AudioTranscriptionResponse>()?.text
         };
 
-        Ok(response_text)
+        Ok(ApiResult::new(response_text, headers))
     }
 
     /// Documented [here](https://platform.openai.com/docs/api-reference/chat)
-    pub fn chat(&mut self, prompt: &str, model: &str) -> Result<String, Box<dyn Error>> {
+    pub fn chat(&mut self, prompt: &str, model: &str) -> Result<ApiResult, Box<dyn Error>> {
         // An ongoing conversation with the LLM
 
         // endpoint
@@ -222,18 +222,20 @@ impl<'a> ApiInterface<'_> {
         // into ``ChatRequestInfo`
         let (headers, response_string) = self.send_curl(&data, uri.as_str())?;
         let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
-        let ar = self.after_request(headers, Some(json.usage), "")?;
+        let mut headers_ret = Self::usage_headers(json.usage);
+        headers_ret.extend(headers);
+
         let content = json.choices[0].message.content.clone();
         self.context.push(prompt.to_string());
         self.context.push(content.clone());
 
-        Ok(format!("{ar}\n{content}"))
+        Ok(ApiResult::new(content, headers_ret))
     }
 
     /// [Documented](https://platform.openai.com/docs/api-reference/completions)
     /// Takes the `prompt` and sends it to the LLM with no context.
     /// The interface has to manage no state
-    pub fn completion(&mut self, prompt: &str, model: &str) -> Result<String, Box<dyn Error>> {
+    pub fn completion(&mut self, prompt: &str, model: &str) -> Result<ApiResult, Box<dyn Error>> {
         let uri: String = format!("{}/completions", API_URL);
 
         let payload = CompletionRequestInfo::new(prompt, model, self.temperature, self.tokens);
@@ -246,6 +248,7 @@ impl<'a> ApiInterface<'_> {
             .json(&payload)
             .send()?;
 
+        let mut headers = Self::header_map_to_hash_map(response.headers());
         let response_text: String = if response.status() != StatusCode::OK {
             // There was some sort of failure.  Probably a network
             // failure
@@ -260,7 +263,6 @@ impl<'a> ApiInterface<'_> {
         } else {
             // Got a good response from the LLM
             let response_debug = format!("{:?}", &response);
-            let headers = response.headers().clone();
             let json: CompletionRequestInfo = match response.json() {
                 Ok(json) => json,
                 Err(err) => {
@@ -271,31 +273,21 @@ impl<'a> ApiInterface<'_> {
             // The data about the query
             // let choice_count = json.choices.len();
             let finish_reason = json.choices[0].finish_reason.as_str();
-            let extra = if finish_reason != "stop" {
-                "Reason {finish_reason}"
-            } else {
-                ""
-            };
+            if finish_reason != "stop" {
+                headers.insert("finsh reason".to_string(), finish_reason.to_string());
+            }
 
             if json.choices[0].text.is_empty() {
                 panic!("Empty json.choices[0].  {:?}", &json);
             } else {
-                format!(
-                    "{}\n{}",
-                    self.after_request(
-                        Self::header_map_to_hash_map(&headers),
-                        Some(json.usage.clone()),
-                        extra,
-                    )?,
-                    json.choices[0].text.clone()
-                )
+                json.choices[0].text.clone()
             }
         };
-        Ok(response_text)
+        Ok(ApiResult::new(response_text, headers))
     }
 
     /// Handle image mode prompts
-    pub fn image(&mut self, prompt: &str) -> Result<String, Box<dyn Error>> {
+    pub fn image(&mut self, prompt: &str) -> Result<ApiResult, Box<dyn Error>> {
         // Endpoint
         let uri: String = format!("{}/images/generations", API_URL);
 
@@ -316,34 +308,36 @@ impl<'a> ApiInterface<'_> {
         let response = match res.send() {
             Ok(r) => r,
             Err(err) => {
-                return Ok(format!("Image: Response::send() failed: '{err}'"));
+                return Ok(ApiResult::new(
+                    format!("Image: Response::send() failed: '{err}'"),
+                    HashMap::new(),
+                ));
             }
         };
 
         // Prepare diagnostic data
-        let headers = response.headers().clone();
-        let diagnostics = format!(
-            "{}\n{:?}",
-            self.after_request(Self::header_map_to_hash_map(&headers), None, "",)?,
-            response,
-        );
-
+        let headers = Self::header_map_to_hash_map(&response.headers().clone());
         if !response.status().is_success() {
-            return Ok(format!("Request failed: {diagnostics}"));
+            return Err(Box::new(ApiError::new(
+                ApiErrorType::Status(response.status()),
+                headers,
+            )));
+            //return Ok(ApiResult::new("Request failed".to_string(), headers));
         }
 
         // Have a normal result.  Process it
         let json: ImageRequestInfo = match response.json() {
             Ok(json) => json,
             Err(err) => {
-                return Ok(format!(
-                    "Failed to get json. {err} Diagnostics: {diagnostics}"
-                ));
+                return Err(Box::new(ApiError::new(
+                    ApiErrorType::BadJson(format!("{err}")),
+                    headers,
+                )))
             }
         };
 
         // Success.
-        Ok(json.data[0].url.clone())
+        Ok(ApiResult::new(json.data[0].url.clone(), headers))
     }
 
     // Editing an image.  The mask defines the region to edit
@@ -355,7 +349,7 @@ impl<'a> ApiInterface<'_> {
         prompt: &str,
         image: &Path,
         mask: &Path,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<ApiResult, Box<dyn Error>> {
         // Endpoint
         let uri = format!("{}/images/edits", API_URL);
 
@@ -377,11 +371,18 @@ impl<'a> ApiInterface<'_> {
                     .text("prompt", prompt.to_string())
                     .text("size", "1024x1024"),
                 Err(err) => {
-                    panic!("{:?}:{}: {err}", mask, mask.exists())
+                    return Err(Box::new(ApiError::new(
+                        ApiErrorType::Error(format!("{err}")),
+                        HashMap::new(),
+                    )))
                 }
             },
+            // Err(err) => return Err(Box::new(ApiErrorType::Error("Err path: {err}".to_string()))),
             Err(err) => {
-                panic!("Err path: {err}")
+                return Err(Box::new(ApiError::new(
+                    ApiErrorType::Error(format!("{err}")),
+                    HashMap::new(),
+                )))
             }
         };
 
@@ -401,23 +402,13 @@ impl<'a> ApiInterface<'_> {
             }
         };
 
-        let headers = response.headers().clone();
-        let ar = self.after_request(Self::header_map_to_hash_map(&headers), None, "")?;
+        let headers = Self::header_map_to_hash_map(&response.headers().clone());
         println!("Sent message: {:?}", start.elapsed());
         if !response.status().is_success() {
-            let json_str = response.text()?;
-            let parsed_json: Result<Value, _> = from_str(json_str.as_str());
-            let fmt = match parsed_json {
-                Ok(j) => j,
-                Err(err) => panic!("{err}"),
-            };
-            return Ok(format!(
-                "{ar}Request failed: {}.",
-                fmt // match  {
-                    //   Ok(j) => j,
-                    //   Err(err) => format!("{err}: Cannot format: {:?}", j),
-                    // }
-            ));
+            return Err(Box::new(ApiError::new(
+                ApiErrorType::Status(response.status()),
+                headers,
+            )));
         }
         let response_dbg = format!("{:?}", response);
         // let response_text = response.text()?;
@@ -430,8 +421,9 @@ impl<'a> ApiInterface<'_> {
             }
         };
 
-        Ok(json.data[0].url.clone())
+        Ok(ApiResult::new(json.data[0].url.clone(), headers))
     }
+
     /// Handle the response if the user queries what models there are
     /// ("! md" prompt in cli)
     pub fn model_list(&self) -> Result<Vec<String>, Box<dyn Error>> {
@@ -453,9 +445,20 @@ impl<'a> ApiInterface<'_> {
         // Ok(vec![])
     }
 
+    fn usage_headers(usage: Usage) -> HashMap<String, String> {
+        let prompt_tokens = usage.prompt_tokens.to_string();
+        let completion_tokens = usage.completion_tokens.to_string();
+        let total_tokens = usage.total_tokens.to_string();
+        let mut result = HashMap::new();
+        result.insert("prompt".to_string(), prompt_tokens);
+        result.insert("completion".to_string(), completion_tokens);
+        result.insert("total".to_string(), total_tokens);
+        result
+    }
+
     /// Data about the request before it goes out.  Cach headers, only
     /// output changes
-    fn after_request(
+    pub fn after_request(
         &mut self,
         response_headers: HashMap<String, String>,
         usage: Option<crate::json::Usage>,
