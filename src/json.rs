@@ -84,6 +84,24 @@ pub struct AudioTranscriptionResponse {
     pub text: String,
 }
 
+/// To receive a list of files
+#[derive(Debug, Serialize, Deserialize)]
+pub struct File {
+    id: String,
+    object: String,
+    bytes: usize,
+    created_at: usize,
+    pub filename: String,
+    purpose: String,
+}
+
+/// All the files stored at openai
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Files {
+    object: String,
+    pub data: Vec<File>,
+}
+
 impl CompletionRequestInfo {
     pub fn new(prompt: &str, model: &str, temperature: f32, max_tokens: u32) -> Self {
         Self {

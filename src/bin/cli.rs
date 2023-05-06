@@ -106,7 +106,8 @@ struct CliInterface {
     /// change
     header_cache: HashMap<String, String>,
 
-    /// Cost in cents, often fraction of a cent.  This is not precise, only calculated for chat
+    /// Cost in cents, often fraction of a cent.  This is not precise,
+    /// only calculated for chat
     cost: f64,
 }
 
@@ -247,6 +248,14 @@ impl CliInterface {
         if let Some(cmd) = meta.nth(1) {
             // Handle commands here
             match cmd {
+                "f" => {
+                    // List files
+                    let vl = api_interface.files_list().unwrap();
+                    response_text = vl
+                        .body
+                        .iter()
+                        .fold(String::new(), |a, b| format!("{a}\n{b}"));
+                }
                 "p" => {
                     response_text = format!(
                         "OpenAI Interface: {api_interface}\nRecord File:{}\nModel: {}\nModel Mode: {}\nImage: {:#?}\nmask: {:#?}\naudio file:{:#?}",
@@ -528,8 +537,9 @@ impl CliInterface {
 		sp Set system prompt (after `! cc`\n\
 		ci Clear image\
 		mask <path> Set the mask to use in image edit mode.  A 1024x1024 PNG with transparent mask\n\
-		a <path> Audio file for transcription
-		ci CLear the image stored for editing
+		a <path> Audio file for transcription\n\
+		ci Clear the image stored for editing\n\
+		f List the files stored on the server\n\
  		?  This text\n"
                         .to_string()
                 }

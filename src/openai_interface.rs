@@ -4,6 +4,7 @@ use crate::api_result::ApiResult;
 use crate::json::AudioTranscriptionResponse;
 use crate::json::ChatRequestInfo;
 use crate::json::CompletionRequestInfo;
+use crate::json::Files;
 use crate::json::ImageRequestInfo;
 use crate::json::Message;
 use crate::json::ModelReturned;
@@ -113,7 +114,35 @@ impl<'a> ApiInterface<'_> {
         }
     }
 
-    // pub fn files_list(&self) -> Result<
+    pub fn files_list(&self) -> Result<ApiResult<Vec<String>>, Box<dyn Error>> {
+        // GET https://api.openai.com/v1/files
+        let uri = format!("{}/files", API_URL);
+        let response = self
+            .client
+            .get(uri)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()?;
+
+        let headers = Self::header_map_to_hash_map(response.headers());
+        let response_strings: Vec<String> = if response.status() != StatusCode::OK {
+            vec![format!(
+                "Failed: Status: {}.\nResponse.path({})",
+                response
+                    .status()
+                    .canonical_reason()
+                    .unwrap_or("Unknown Reason"),
+                response.url().path(),
+            )]
+        } else {
+            response
+                .json::<Files>()?
+                .data
+                .iter()
+                .map(|x| x.filename.clone())
+                .collect()
+        };
+        Ok(ApiResult::new_v(response_strings, headers))
+    }
     /// The audio file `audio_file` is tracscribed.  No `Usage` data
     /// returned from this endpoint
     /// Get an audio transcription
