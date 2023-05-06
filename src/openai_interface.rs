@@ -112,6 +112,7 @@ impl<'a> ApiInterface<'_> {
         }
     }
 
+    // pub fn files_list(&self) -> Result<
     /// The audio file `audio_file` is tracscribed.  No `Usage` data
     /// returned from this endpoint
     /// Get an audio transcription
@@ -119,7 +120,7 @@ impl<'a> ApiInterface<'_> {
         &mut self,
         audio_file: &Path,
         prompt: Option<&str>,
-    ) -> Result<ApiResult, Box<dyn Error>> {
+    ) -> Result<ApiResult<String>, Box<dyn Error>> {
         // Request
         // curl https://api.openai.com/v1/audio/transcriptions \
         //   -H "Authorization: Bearer $OPENAI_API_KEY" \
@@ -171,7 +172,7 @@ impl<'a> ApiInterface<'_> {
     }
 
     /// Documented [here](https://platform.openai.com/docs/api-reference/chat)
-    pub fn chat(&mut self, prompt: &str, model: &str) -> Result<ApiResult, Box<dyn Error>> {
+    pub fn chat(&mut self, prompt: &str, model: &str) -> Result<ApiResult<String>, Box<dyn Error>> {
         // An ongoing conversation with the LLM
 
         // endpoint
@@ -228,7 +229,11 @@ impl<'a> ApiInterface<'_> {
     /// [Documented](https://platform.openai.com/docs/api-reference/completions)
     /// Takes the `prompt` and sends it to the LLM with no context.
     /// The interface has to manage no state
-    pub fn completion(&mut self, prompt: &str, model: &str) -> Result<ApiResult, Box<dyn Error>> {
+    pub fn completion(
+        &mut self,
+        prompt: &str,
+        model: &str,
+    ) -> Result<ApiResult<String>, Box<dyn Error>> {
         let uri: String = format!("{}/completions", API_URL);
 
         let payload = CompletionRequestInfo::new(prompt, model, self.temperature, self.tokens);
@@ -280,7 +285,7 @@ impl<'a> ApiInterface<'_> {
     }
 
     /// Handle image mode prompts
-    pub fn image(&mut self, prompt: &str) -> Result<ApiResult, Box<dyn Error>> {
+    pub fn image(&mut self, prompt: &str) -> Result<ApiResult<String>, Box<dyn Error>> {
         // Endpoint
         let uri: String = format!("{}/images/generations", API_URL);
 
@@ -342,7 +347,7 @@ impl<'a> ApiInterface<'_> {
         prompt: &str,
         image: &Path,
         mask: &Path,
-    ) -> Result<ApiResult, Box<dyn Error>> {
+    ) -> Result<ApiResult<String>, Box<dyn Error>> {
         // Endpoint
         let uri = format!("{}/images/edits", API_URL);
 
