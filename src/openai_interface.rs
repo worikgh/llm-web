@@ -35,15 +35,16 @@ use std::io::Read;
 use std::result::Result;
 
 // URLS:
-// Completions: POST https://api.openai.com/v1/completions
-// Chat: POST https://api.openai.com/v1/completions
+// * => implemented
+// * Completions: POST https://api.openai.com/v1/completions
+// * Chat: POST https://api.openai.com/v1/completions
 // Edits: POST https://api.openai.com/v1/chat/completions
-// Images, create: POST https://api.openai.com/v1/images/generations
-// Images, edit: POST https://api.openai.com/v1/images/edits
+// * Images, create: POST https://api.openai.com/v1/images/generations
+// * Images, edit: POST https://api.openai.com/v1/images/edits
 // Images, variations: POST https://api.openai.com/v1/images/variations
-// Audio, transcription: POST https://api.openai.com/v1/audio/transcriptions
+// * Audio, transcription: POST https://api.openai.com/v1/audio/transcriptions
 // Audio, translation: POST https://api.openai.com/v1/audio/translations
-// Files, list: GET https://api.openai.com/v1/files
+// * Files, list: GET https://api.openai.com/v1/files
 // Files, upload: POST https://api.openai.com/v1/files
 // Files, delete: DELETE https://api.openai.com/v1/files/{file_id}
 // Files, retrieve: GET https://api.openai.com/v1/files/{file_id}
