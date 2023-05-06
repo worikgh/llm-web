@@ -33,10 +33,10 @@ mod helpers {
 use clap::Parser;
 use llm_rs::openai_interface;
 
-const DEFAULT_MODEL: &str = "text-davinci-003";
+const DEFAULT_MODEL: &str = "gpt-4";
 const DEFAULT_TOKENS: u32 = 2_000_u32;
 const DEFAULT_TEMPERATURE: f32 = 0.9_f32;
-const DEFAULT_MODE: &str = "completions";
+const DEFAULT_MODE: &str = "chat";
 const DEFAULT_RECORD_FILE: &str = "reply.txt";
 const DEFAULT_HISTORY_FILE: &str = "history.txt";
 
@@ -671,7 +671,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             response_text = cli_interface.process_meta(prompt, &mut api_interface)?;
         } else {
             // Send the prompt to the LLM
-            response_text = match cli_interface.model_mode {
+            let start_time = Local::now();
+            let response = match cli_interface.model_mode {
                 ModelMode::AudioTranscription => {
                     let prompt_param: Option<&str> = if prompt.is_empty() {
                         None
@@ -732,6 +733,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
             };
+            let end_time = Local::now();
+            let duration = end_time.signed_duration_since(start_time);
+            response_text = format!("{} seconds\n{response}", duration.num_seconds());
         }
 
         // Put state dependant logic here to display useful information
