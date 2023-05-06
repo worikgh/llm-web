@@ -76,12 +76,6 @@ pub struct ApiInterface<'a> {
 
     /// The chat model system prompt
     pub system_prompt: String,
-
-    /// Header cache.  This is used to monitor the headers.  I want to
-    /// see what headers are coming back frmo OpenAI but they clutter
-    /// things.  Cache them here and only report on headers that
-    /// change
-    header_cache: HashMap<String, String>,
 }
 
 impl Display for ApiInterface<'_> {
@@ -115,7 +109,6 @@ impl<'a> ApiInterface<'_> {
             // model: model.to_string(),
             context: vec![],
             system_prompt: String::new(),
-            header_cache: HashMap::new(),
         }
     }
 
@@ -454,39 +447,6 @@ impl<'a> ApiInterface<'_> {
         result.insert("completion".to_string(), completion_tokens);
         result.insert("total".to_string(), total_tokens);
         result
-    }
-
-    /// Data about the request before it goes out.  Cach headers, only
-    /// output changes
-    pub fn after_request(
-        &mut self,
-        response_headers: HashMap<String, String>,
-        usage: Option<crate::json::Usage>,
-        extra: &str,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let mut result = extra.to_string();
-        for k in response_headers.keys() {
-            if let Some(v) = self.header_cache.get(k) {
-                if v == response_headers.get(k).unwrap() {
-                    continue;
-                }
-            }
-            self.header_cache
-                .insert(k.clone(), response_headers.get(k).unwrap().clone());
-            result += &format!("{k}: {}\n", response_headers[k]);
-        }
-
-        if let Some(usage) = usage {
-            let prompt_tokens = usage.prompt_tokens;
-            let completion_tokens = usage.completion_tokens;
-            let total_tokens = usage.total_tokens;
-            result = format!(
-                "{result} Tokens: Prompt({prompt_tokens}) \
-		 + Completion({completion_tokens}) \
-		     == {total_tokens}\n"
-            );
-        }
-        Ok(result)
     }
 
     /// Used to adapt headers reported from Reqwest
