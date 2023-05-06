@@ -8,6 +8,7 @@ use crate::json::ImageRequestInfo;
 use crate::json::Message;
 use crate::json::ModelReturned;
 use crate::json::Usage;
+use crate::model_mode::ModelMode;
 use curl::easy::Easy;
 use curl::easy::List;
 // use std::fs::File;
@@ -216,7 +217,12 @@ impl<'a> ApiInterface<'_> {
         // into ``ChatRequestInfo`
         let (headers, response_string) = self.send_curl(&data, uri.as_str())?;
         let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
-        let mut headers_ret = Self::usage_headers(json.usage);
+        let mut headers_ret = Self::usage_headers(json.usage.clone());
+        headers_ret.insert(
+            "Cost".to_string(),
+            format!("{}", Self::cost(json.usage, ModelMode::Chat)),
+        );
+
         headers_ret.extend(headers);
 
         let content = json.choices[0].message.content.clone();
@@ -442,15 +448,20 @@ impl<'a> ApiInterface<'_> {
         Ok(model_returned.data.iter().map(|x| x.root.clone()).collect())
         // Ok(vec![])
     }
-
+    fn cost(usage: Usage, model: ModelMode) -> f64 {
+        match model {
+            ModelMode::Chat => usage.completion_tokens as f64 / 1000.0 * 12.0,
+            _ => panic!("cost called.  Model: {model}"),
+        }
+    }
     fn usage_headers(usage: Usage) -> HashMap<String, String> {
         let prompt_tokens = usage.prompt_tokens.to_string();
         let completion_tokens = usage.completion_tokens.to_string();
         let total_tokens = usage.total_tokens.to_string();
         let mut result = HashMap::new();
-        result.insert("prompt".to_string(), prompt_tokens);
-        result.insert("completion".to_string(), completion_tokens);
-        result.insert("total".to_string(), total_tokens);
+        result.insert("Tokens prompt".to_string(), prompt_tokens);
+        result.insert("Tokens completion".to_string(), completion_tokens);
+        result.insert("Tokens total".to_string(), total_tokens);
         result
     }
 

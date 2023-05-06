@@ -105,6 +105,9 @@ struct CliInterface {
     /// things.  Cache them here and only report on headers that
     /// change
     header_cache: HashMap<String, String>,
+
+    /// Cost in cents, often fraction of a cent.  This is not precise, only calculated for chat
+    cost: f64,
 }
 
 impl CliInterface {
@@ -611,6 +614,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         mask: None,
         image: None,
         header_cache: HashMap::new(),
+        cost: 0.0,
     };
     // The file name of the conversation record
     cli_interface.record_file = cmd_line_opts.record_file;
@@ -690,7 +694,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 ModelMode::Chat => match api_interface.chat(prompt, cli_interface.model.as_str()) {
-                    Ok(r) => format!("{}\n{}", cli_interface.after_request(r.headers)?, r.body,),
+                    Ok(mut r) => {
+                        // Get ready
+                        cli_interface.cost +=
+                            r.headers.get("Cost").unwrap().parse::<f64>().unwrap();
+                        r.headers
+                            .insert("Total Cost".to_string(), format!("{}", cli_interface.cost));
+                        format!("{}\n{}", cli_interface.after_request(r.headers)?, r.body,)
+                    }
                     Err(err) => format!("{err}"),
                 },
 
