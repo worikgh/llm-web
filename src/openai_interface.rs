@@ -115,7 +115,8 @@ impl<'a> ApiInterface<'_> {
         }
     }
 
-    pub fn files_list(&self) -> Result<ApiResult<Vec<String>>, Box<dyn Error>> {
+    /// Get a list of all files stored on OpenAI
+    pub fn files_list(&self) -> Result<ApiResult<Vec<(String, String)>>, Box<dyn Error>> {
         // GET https://api.openai.com/v1/files
         let uri = format!("{}/files", API_URL);
         let response = self
@@ -125,21 +126,21 @@ impl<'a> ApiInterface<'_> {
             .send()?;
 
         let headers = Self::header_map_to_hash_map(response.headers());
-        let response_strings: Vec<String> = if response.status() != StatusCode::OK {
-            vec![format!(
-                "Failed: Status: {}.\nResponse.path({})",
-                response
-                    .status()
-                    .canonical_reason()
-                    .unwrap_or("Unknown Reason"),
-                response.url().path(),
-            )]
+        let response_strings: Vec<(String, String)> = if response.status() != StatusCode::OK {
+            let reason = response
+                .status()
+                .canonical_reason()
+                .unwrap_or("Unknown Reason");
+            return Err(Box::new(ApiError::new(
+                ApiErrorType::Status(response.status(), reason.to_string()),
+                headers.clone(),
+            )));
         } else {
             response
                 .json::<Files>()?
                 .data
                 .iter()
-                .map(|x| x.filename.clone())
+                .map(|x| (x.filename.clone(), x.id.clone()))
                 .collect()
         };
         Ok(ApiResult::new_v(response_strings, headers))
@@ -352,8 +353,12 @@ impl<'a> ApiInterface<'_> {
         // Prepare diagnostic data
         let headers = Self::header_map_to_hash_map(&response.headers().clone());
         if !response.status().is_success() {
+            let reason = response
+                .status()
+                .canonical_reason()
+                .unwrap_or("Unknown Reason");
             return Err(Box::new(ApiError::new(
-                ApiErrorType::Status(response.status()),
+                ApiErrorType::Status(response.status(), reason.to_string()),
                 headers,
             )));
             //return Ok(ApiResult::new("Request failed".to_string(), headers));
@@ -439,8 +444,12 @@ impl<'a> ApiInterface<'_> {
         let headers = Self::header_map_to_hash_map(&response.headers().clone());
         println!("Sent message: {:?}", start.elapsed());
         if !response.status().is_success() {
+            let reason = response
+                .status()
+                .canonical_reason()
+                .unwrap_or("Unknown Reason");
             return Err(Box::new(ApiError::new(
-                ApiErrorType::Status(response.status()),
+                ApiErrorType::Status(response.status(), reason.to_string()),
                 headers,
             )));
         }

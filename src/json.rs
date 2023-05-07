@@ -87,7 +87,7 @@ pub struct AudioTranscriptionResponse {
 /// To receive a list of files
 #[derive(Debug, Serialize, Deserialize)]
 pub struct File {
-    id: String,
+    pub id: String,
     object: String,
     bytes: usize,
     created_at: usize,

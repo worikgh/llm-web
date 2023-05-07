@@ -11,8 +11,8 @@ impl ApiResult<String> {
         Self { headers, body }
     }
 }
-impl ApiResult<Vec<String>> {
-    pub fn new_v(body: Vec<String>, headers: HashMap<String, String>) -> Self {
+impl ApiResult<Vec<(String, String)>> {
+    pub fn new_v(body: Vec<(String, String)>, headers: HashMap<String, String>) -> Self {
         Self { headers, body }
     }
 }

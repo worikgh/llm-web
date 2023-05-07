@@ -251,10 +251,12 @@ impl CliInterface {
                 "f" => {
                     // List files
                     let vl = api_interface.files_list().unwrap();
-                    response_text = vl
-                        .body
-                        .iter()
-                        .fold(String::new(), |a, b| format!("{a}\n{b}"));
+                    response_text = format!(
+                        ".....File ID...................Name{}",
+                        vl.body
+                            .iter()
+                            .fold(String::new(), |a, b| format!("{a}\n{}: {}", b.1, b.0))
+                    );
                 }
                 "p" => {
                     response_text = format!(
