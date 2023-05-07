@@ -4,6 +4,7 @@ use crate::api_result::ApiResult;
 use crate::json::AudioTranscriptionResponse;
 use crate::json::ChatRequestInfo;
 use crate::json::CompletionRequestInfo;
+use crate::json::FileUploadResponse;
 use crate::json::Files;
 use crate::json::ImageRequestInfo;
 use crate::json::Message;
@@ -144,6 +145,57 @@ impl<'a> ApiInterface<'_> {
                 .collect()
         };
         Ok(ApiResult::new_v(response_strings, headers))
+    }
+
+    /// Upload a file for fine-tuning.
+    pub fn upload_fine_tuning_file(
+        &self,
+        file: &Path,
+    ) -> Result<ApiResult<String>, Box<dyn Error>> {
+        // Request
+        // curl https://api.openai.com/v1/files \
+        // -H "Authorization: Bearer $OPENAI_API_KEY" \
+        // -F purpose="fine-tune" \
+        // -F file="@mydata.jsonl"
+
+        // Response
+        // {
+        //   "id": "file-XjGxS3KTG0uNmNOK362iJua3",
+        //   "object": "file",
+        //   "bytes": 140,
+        //   "created_at": 1613779121,
+        //   "filename": "mydata.jsonl",
+        //   "purpose": "fine-tune"
+        // }
+
+        let uri = format!("{}/files", API_URL);
+
+        let file_field = multipart::Part::file(file)?;
+        let purpose_field = multipart::Part::text("fine-tune");
+        let form = multipart::Form::new()
+            .part("file", file_field)
+            .part("purpose", purpose_field);
+        let response = self
+            .client
+            .post(uri)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .multipart(form)
+            .send()?;
+        let headers = Self::header_map_to_hash_map(response.headers());
+        let response_text: String = if response.status() != StatusCode::OK {
+            let reason = response
+                .status()
+                .canonical_reason()
+                .unwrap_or("Unknown Reason");
+            return Err(Box::new(ApiError::new(
+                ApiErrorType::Status(response.status(), reason.to_string()),
+                headers.clone(),
+            )));
+        } else {
+            response.json::<FileUploadResponse>()?.id
+        };
+
+        Ok(ApiResult::new(response_text, headers))
     }
     /// The audio file `audio_file` is tracscribed.  No `Usage` data
     /// returned from this endpoint

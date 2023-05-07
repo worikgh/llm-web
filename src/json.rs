@@ -102,6 +102,17 @@ pub struct Files {
     pub data: Vec<File>,
 }
 
+/// Response after file uploaded
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileUploadResponse {
+    pub id: String,
+    object: String,
+    bytes: usize,
+    created_at: usize,
+    filename: String,
+    purpose: String,
+}
+
 impl CompletionRequestInfo {
     pub fn new(prompt: &str, model: &str, temperature: f32, max_tokens: u32) -> Self {
         Self {

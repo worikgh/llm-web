@@ -258,6 +258,27 @@ impl CliInterface {
                             .fold(String::new(), |a, b| format!("{a}\n{}: {}", b.1, b.0))
                     );
                 }
+                "fu" => {
+                    let file_name: String = meta.collect::<Vec<&str>>().join(" ");
+                    if file_name.is_empty() {
+                        response_text = format!(
+                            "Enter an audio file to transcribe: {}",
+                            current_dir()?.display()
+                        );
+                    } else if PathBuf::from(file_name.as_str()).exists() {
+                        response_text = match api_interface
+                            .upload_fine_tuning_file(Path::new(file_name.as_str()))
+                        {
+                            Ok(r) => r.body,
+                            Err(err) => format!("{err}: Failed to upload {file_name}"),
+                        };
+                    } else {
+                        response_text = format!(
+                            "{file_name} dose not exist.  Paths relative to {}",
+                            current_dir()?.display()
+                        );
+                    }
+                }
                 "p" => {
                     response_text = format!(
                         "OpenAI Interface: {api_interface}\nRecord File:{}\nModel: {}\nModel Mode: {}\nImage: {:#?}\nmask: {:#?}\naudio file:{:#?}",
@@ -542,6 +563,7 @@ impl CliInterface {
 		a <path> Audio file for transcription\n\
 		ci Clear the image stored for editing\n\
 		f List the files stored on the server\n\
+		fu <path> Upload a file of fine tuning data\n\
  		?  This text\n"
                         .to_string()
                 }
