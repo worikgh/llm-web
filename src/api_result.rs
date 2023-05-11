@@ -16,3 +16,8 @@ impl ApiResult<Vec<(String, String)>> {
         Self { headers, body }
     }
 }
+impl ApiResult<()> {
+    pub fn new_e(headers: HashMap<String, String>) -> Self {
+        Self { headers, body: () }
+    }
+}
