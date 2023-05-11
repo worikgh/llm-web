@@ -1,11 +1,13 @@
 use chrono::Local;
+//use code::cli_error::CliError;
+use code::my_helper::MyHelper;
 use directories::ProjectDirs;
-use helpers::my_helper::MyHelper;
 use image::ImageFormat;
 use llm_rs::model_mode::ModelMode;
 use openai_interface::ApiInterface;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
+use regex::Regex;
 use reqwest::blocking::get;
 use rustyline::completion::FilenameCompleter;
 use rustyline::highlight::MatchingBracketHighlighter;
@@ -14,7 +16,6 @@ use rustyline::history::FileHistory;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Cmd, CompletionType, Config, EditMode, Editor, Event, EventHandler, KeyEvent};
 use std::collections::HashMap;
-use std::env;
 use std::env::current_dir;
 use std::error::Error;
 use std::fs::File;
@@ -25,8 +26,10 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Instant;
+use std::{env, fs};
 extern crate llm_rs;
-mod helpers {
+mod code {
+    pub mod cli_error;
     pub mod my_helper;
 }
 
@@ -109,6 +112,9 @@ struct CliInterface {
     /// Cost in cents, often fraction of a cent.  This is not precise,
     /// only calculated for chat
     cost: f64,
+
+    /// Local data.  Generally this is reading local files of data
+    local_data: HashMap<String, String>,
 }
 
 impl CliInterface {
@@ -233,13 +239,25 @@ impl CliInterface {
         Ok(read_line)
     }
 
+    fn expand_variables(&self, input: String) -> Result<String, Box<dyn Error>> {
+        let re = Regex::new(r"\{(\w+)\}").unwrap();
+        let result = re
+            .replace_all(&input, |caps: &regex::Captures| {
+                self.local_data
+                    .get(&caps[1])
+                    .unwrap_or(&caps[0].to_string())
+                    .to_string()
+            })
+            .to_string();
+        Ok(result)
+    }
     /// Process prompts that are to effect or inspect the programme itself
     /// `prommpt` is what the user entered after the initial "!"
     fn process_meta(
         &mut self,
         prompt: &str,
         api_interface: &mut ApiInterface,
-    ) -> rustyline::Result<String> {
+    ) -> Result<String, Box<dyn Error>> {
         let mut meta = prompt.split_whitespace();
         // The first word is: "!"
         // The rest of the words are commands for the programme to interpret.
@@ -267,7 +285,7 @@ impl CliInterface {
                         );
                     } else if PathBuf::from(file_name.as_str()).exists() {
                         response_text = match api_interface
-                            .upload_fine_tuning_file(Path::new(file_name.as_str()))
+                            .files_upload_fine_tuning(Path::new(file_name.as_str()))
                         {
                             Ok(r) => r.body,
                             Err(err) => format!("{err}: Failed to upload {file_name}"),
@@ -281,7 +299,7 @@ impl CliInterface {
                 }
                 "p" => {
                     response_text = format!(
-                        "OpenAI Interface: {api_interface}\nRecord File:{}\nModel: {}\nModel Mode: {}\nImage: {:#?}\nmask: {:#?}\naudio file:{:#?}",
+                        "OpenAI Interface: {api_interface}\nRecord File:{}\nModel: {}\nModel Mode: {}\nImage: {:#?}\nmask: {:#?}\naudio file:{:#?}\nCompletions{}",
                         // Display the parameters
                         self.record_file,
 			self.model,
@@ -289,6 +307,7 @@ impl CliInterface {
 			self.image,
 			self.mask,
 			self.audio_file,
+			self.local_data.keys().fold("".to_string(), |a, b| format!("{a}\n\t{b}")),
                     );
                 }
                 "md" => {
@@ -314,12 +333,12 @@ impl CliInterface {
                 }
                 "ml" => {
                     response_text = "Modes\ncompletions\n\t\
-					 chat\n\t\
-					 image\n\t\
-					 image_edit\n\t\
-					 audio_transcription\n\t\
-					 "
-                    .to_string()
+				     chat\n\t\
+				     image\n\t\
+				     image_edit\n\t\
+				     audio_transcription\n\t\
+				     "
+			.to_string()
                 }
                 "m" => {
                     // Set the mode (effectively the API endpoint at OpenAI
@@ -367,7 +386,7 @@ impl CliInterface {
                                     } else {
                                         self.model_mode = ModelMode::Image;
                                         response_text =
-                                        "File: {file_name} does not exist.  Model mode => Image\n"
+                                            "File: {file_name} does not exist.  Model mode => Image\n"
                                             .to_string();
                                     }
                                 }
@@ -379,15 +398,15 @@ impl CliInterface {
                                         if self.image.is_none() && self.focus_image_url.is_none() {
                                             response_text = format!(
                                                 "Cannot switch to ImageEdit mode \
-					     from {} mode until you have created \
-					     an image.  Enter a prompt to create an image",
+						 from {} mode until you have created \
+						 an image.  Enter a prompt to create an image",
                                                 self.model_mode
                                             );
                                         } else if self.mask.is_none() {
                                             response_text = format!(
                                                 "Cannot switch to ImageEdit mode \
-					     from {} mode until you have created \
-					     a mask.",
+						 from {} mode until you have created \
+						 a mask.",
                                                 self.model_mode
                                             );
                                         } else {
@@ -412,11 +431,11 @@ impl CliInterface {
                         },
                         None => {
                             response_text = "Model modes\n\
-					 completions\n\
-					 chat\n\
-					 image\n\
-					 image_edit\n\
-					 audio_transcription\n"
+					     completions\n\
+					     chat\n\
+					     image\n\
+					     image_edit\n\
+					     audio_transcription\n"
                                 .to_string()
                         }
                     }
@@ -518,7 +537,7 @@ impl CliInterface {
                         let _path = Path::new(file_name.as_str());
                         response_text = format!(
                             "Audio Transcription mode.  \
-						 File: {file_name}"
+			     File: {file_name}"
                         );
                     } else {
                         response_text = format!(
@@ -545,32 +564,69 @@ impl CliInterface {
                         );
                     }
                 }
+                "fl" => {
+                    // Load a file's contents into a buffer to use as
+                    // part of a prompt
+                    match meta.next() {
+                        Some(name) => {
+			    let file_name: String = meta.collect::<Vec<&str>>().join(" ");
+			    if file_name.is_empty() {
+				response_text = format!(
+				    "! fl <name> <file path>: The contents of a file\
+				     is bound to the name for use in prompts: {{name}}\
+				     expands to file content.  The path is relative to:\
+				     {}",
+				    current_dir()?.display()
+				);
+			    } else if !PathBuf::from(file_name.as_str()).exists() {
+				response_text = format!(
+				    "{file_name} does not exist.  Paths relative to {}",
+				    current_dir()?.display()
+				);
+			    } else {
+				// Got the name and the file
+
+				// Get file contents
+				let contents = fs::read_to_string(Path::new(&file_name))?;
+				// Associate the name and the contents
+				_ = self.local_data.insert(name.to_string(), contents);
+				response_text = format!("Loaded {name}");
+
+			    }
+			},
+                        None => {
+                            response_text = "Cannot get name".to_string()
+                        }
+                    };
+
+                }
                 "?" => {
                     response_text = "\
-		p  Display settings\n\
-		md Display all available models\n\
-		ms <model> Change the current model\n\
-		ml List modes\
-		m  <mode> Change mode (API endpoint\n\
-		cd Display context (for chat)\n\
-		cc Clear context\n\
-		v  Set verbosity\n\
-		k  Set max tokens for completions\n\
-		t  Set temperature for completions\n\
-		sp Set system prompt (after `! cc`\n\
-		ci Clear image\
-		mask <path> Set the mask to use in image edit mode.  A 1024x1024 PNG with transparent mask\n\
-		a <path> Audio file for transcription\n\
-		ci Clear the image stored for editing\n\
-		f List the files stored on the server\n\
-		fu <path> Upload a file of fine tuning data\n\
- 		?  This text\n"
+		    p  Display settings\n\
+		    md Display all available models\n\
+		    ms <model> Change the current model\n\
+		    ml List modes\
+		    m  <mode> Change mode (API endpoint\n\
+		    cd Display context (for chat)\n\
+		    cc Clear context\n\
+		    v  Set verbosity\n\
+		    k  Set max tokens for completions\n\
+		    t  Set temperature for completions\n\
+		    sp Set system prompt (after `! cc`\n\
+		    ci Clear image\
+		    mask <path> Set the mask to use in image edit mode.  A 1024x1024 PNG with transparent mask\n\
+		    a <path> Audio file for transcription\n\
+		    ci Clear the image stored for editing\n\
+		    f List the files stored on the server\n\
+		    fu <path> Upload a file of fine tuning data\n\
+		    fl <name> <path>  Associate the contents of the `path` with `name` for use in prompts like: {{name}}\n\
+ 		    ?  This text\n"
                         .to_string()
                 }
                 _ => response_text = format!("Unknown command: {cmd}\n"),
             };
         } else {
-            response_text = format!("Prompt: {prompt} Not understood\n");
+            response_text = "Enter a meta command".to_string();
         }
         Ok(response_text)
     }
@@ -649,6 +705,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         image: None,
         header_cache: HashMap::new(),
         cost: 0.0,
+        local_data: HashMap::new(),
     };
     // The file name of the conversation record
     cli_interface.record_file = cmd_line_opts.record_file;
@@ -683,7 +740,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         read_line.add_history_entry(input.as_str())?;
         count += 1;
 
-        prompt = input.clone();
+        // Expand and varoables i the prompt
+
+        prompt = cli_interface.expand_variables(input.clone())?;
         _ = conversation_record_file
             .write(
                 format!(
