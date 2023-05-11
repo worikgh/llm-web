@@ -4,6 +4,7 @@ use crate::api_result::ApiResult;
 use crate::json::AudioTranscriptionResponse;
 use crate::json::ChatRequestInfo;
 use crate::json::CompletionRequestInfo;
+use crate::json::FileDeletedResponse;
 use crate::json::FileUploadResponse;
 use crate::json::Files;
 use crate::json::ImageRequestInfo;
@@ -46,7 +47,7 @@ use std::result::Result;
 // * Audio, transcription: POST https://api.openai.com/v1/audio/transcriptions
 // Audio, translation: POST https://api.openai.com/v1/audio/translations
 // * Files, list: GET https://api.openai.com/v1/files
-// Files, upload: POST https://api.openai.com/v1/files
+// * Files, upload: POST https://api.openai.com/v1/files
 // Files, delete: DELETE https://api.openai.com/v1/files/{file_id}
 // Files, retrieve: GET https://api.openai.com/v1/files/{file_id}
 // Files, retrieve content: GET https://api.openai.com/v1/files/{file_id}/content
@@ -116,6 +117,41 @@ impl<'a> ApiInterface<'_> {
         }
     }
 
+    /// Delete a file
+    pub fn files_delete(&self, file_id: String) -> Result<ApiResult<()>, Box<dyn Error>> {
+        // DELETE https://api.openai.com/v1/files/{file_id}
+        let uri = format!("{API_URL}/files/{file_id}");
+        let response = self
+            .client
+            .delete(uri.as_str())
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()?;
+        let headers = Self::header_map_to_hash_map(response.headers());
+        if response.status() != StatusCode::OK {
+            let reason = response
+                .status()
+                .canonical_reason()
+                .unwrap_or("Unknown Reason");
+            Err(Box::new(ApiError::new(
+                ApiErrorType::Status(response.status(), reason.to_string()),
+                headers,
+            )))
+        } else {
+            let fdr: FileDeletedResponse = response.json()?;
+            if !fdr.deleted || fdr.object != *"file" || fdr.id != file_id {
+                Err(Box::new(ApiError::new(
+                    ApiErrorType::Error(format!(
+                        "File delete response:{:?}  file_id: {file_id}",
+                        fdr
+                    )),
+                    headers,
+                )))
+            } else {
+                Ok(ApiResult::new_e(HashMap::new()))
+            }
+        }
+    }
     /// Get a list of all files stored on OpenAI
     pub fn files_list(&self) -> Result<ApiResult<Vec<(String, String)>>, Box<dyn Error>> {
         // GET https://api.openai.com/v1/files
@@ -134,7 +170,7 @@ impl<'a> ApiInterface<'_> {
                 .unwrap_or("Unknown Reason");
             return Err(Box::new(ApiError::new(
                 ApiErrorType::Status(response.status(), reason.to_string()),
-                headers.clone(),
+                headers,
             )));
         } else {
             response
@@ -148,7 +184,7 @@ impl<'a> ApiInterface<'_> {
     }
 
     /// Upload a file for fine-tuning.
-    pub fn upload_fine_tuning_file(
+    pub fn files_upload_fine_tuning(
         &self,
         file: &Path,
     ) -> Result<ApiResult<String>, Box<dyn Error>> {
@@ -189,7 +225,7 @@ impl<'a> ApiInterface<'_> {
                 .unwrap_or("Unknown Reason");
             return Err(Box::new(ApiError::new(
                 ApiErrorType::Status(response.status(), reason.to_string()),
-                headers.clone(),
+                headers,
             )));
         } else {
             response.json::<FileUploadResponse>()?.id

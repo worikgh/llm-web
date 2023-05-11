@@ -113,6 +113,14 @@ pub struct FileUploadResponse {
     purpose: String,
 }
 
+/// Response after file deleted
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileDeletedResponse {
+    pub id: String,
+    pub object: String,
+    pub deleted: bool,
+}
+
 impl CompletionRequestInfo {
     pub fn new(prompt: &str, model: &str, temperature: f32, max_tokens: u32) -> Self {
         Self {
