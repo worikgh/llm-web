@@ -183,32 +183,6 @@ impl CliInterface {
         Ok(())
     }
 
-    /// This function was written by Chat-GPT using
-    /// text-davinci-003. Justifies the output so no line is longer than
-    /// 80 characters by splitting lines on word breaks
-    fn justify_string(s: &str) -> String {
-        let mut result = String::new();
-        let mut line_length = 0;
-
-        for word in s.split_whitespace() {
-            //    while let Some(word) = words.next() {
-            let word_length = word.len();
-
-            if line_length + word_length + 1 > 80 {
-                result.push('\n');
-                line_length = 0;
-            } else if line_length > 0 {
-                result.push(' ');
-                line_length += 1;
-            }
-
-            result.push_str(word);
-            line_length += word_length;
-        }
-
-        result
-    }
-
     fn set_up_read_line(&self) -> rustyline::Result<Editor<MyHelper, FileHistory>> {
         let config = Config::builder()
             .history_ignore_space(true)
@@ -863,13 +837,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .as_bytes(),
             )
             .unwrap();
-
-        let out_v: Vec<&str> = response_text.split_terminator('\n').collect();
-        let mut output = String::new();
-        for w in out_v {
-            output = format!("{output}\n{}", CliInterface::justify_string(w));
-        }
-        println! {"{output}"};
+        println! {"{response_text}"};
     }
 
     read_line
