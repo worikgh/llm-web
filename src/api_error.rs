@@ -33,17 +33,17 @@ impl fmt::Display for ApiError {
             .fold(String::new(), |a, (b0, b1)| format!("{a}\n{b0}:{b1}"));
         match self.error_type {
             ApiErrorType::FailedRequest(ref msg) => {
-                write!(f, "{header_report}Failed Request: {msg}")
+                write!(f, "{header_report}\nFailed Request: {msg}")
             }
             ApiErrorType::BadJson(ref msg) => write!(f, "Bad JSON: {}", msg),
 
             // HTTP failure.  Not a 200 status
             ApiErrorType::Status(ref status, ref reason) => {
-                write!(f, "{header_report} HTTP Status({status} Reason: {reason}")
+                write!(f, "{header_report}\nHTTP Status({status}) Reason: {reason}")
             }
 
             // Generic.  TODO: Get rid of this
-            ApiErrorType::Error(ref msg) => write!(f, "{header_report}Error: {msg}"),
+            ApiErrorType::Error(ref msg) => write!(f, "{header_report}\nError: {msg}"),
         }
     }
 }
