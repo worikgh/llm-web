@@ -48,7 +48,7 @@ use std::result::Result;
 // Audio, translation: POST https://api.openai.com/v1/audio/translations
 // * Files, list: GET https://api.openai.com/v1/files
 // * Files, upload: POST https://api.openai.com/v1/files
-// Files, delete: DELETE https://api.openai.com/v1/files/{file_id}
+// * Files, delete: DELETE https://api.openai.com/v1/files/{file_id}
 // Files, retrieve: GET https://api.openai.com/v1/files/{file_id}
 // Files, retrieve content: GET https://api.openai.com/v1/files/{file_id}/content
 // Fine tune, create: POST https://api.openai.com/v1/fine-tunes
