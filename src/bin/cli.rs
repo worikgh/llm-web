@@ -225,6 +225,7 @@ impl CliInterface {
             .to_string();
         Ok(result)
     }
+
     /// Process prompts that are to effect or inspect the programme itself
     /// `prommpt` is what the user entered after the initial "!"
     fn process_meta(
@@ -271,6 +272,14 @@ impl CliInterface {
                         );
                     }
                 }
+		"fd" => {
+		    // Delete a file
+                    let file_id: String = meta.collect::<Vec<&str>>().join(" ");
+		    response_text = match api_interface.files_delete(file_id) {
+			Ok(_) => "Deleted".to_string(),
+			Err(err) => format!("{err} Failed to delete"),
+		    };
+		}
                 "p" => {
                     response_text = format!(
                         "OpenAI Interface: {api_interface}\nRecord File:{}\nModel: {}\nModel Mode: {}\nImage: {:#?}\nmask: {:#?}\naudio file:{:#?}\nCompletions{}",
@@ -593,6 +602,7 @@ impl CliInterface {
 		    ci Clear the image stored for editing\n\
 		    f List the files stored on the server\n\
 		    fu <path> Upload a file of fine tuning data\n\
+		    fd <file id> Delete a file\n\
 		    fl <name> <path>  Associate the contents of the `path` with `name` for use in prompts like: {{name}}\n\
  		    ?  This text\n"
                         .to_string()
