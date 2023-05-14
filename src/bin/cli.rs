@@ -277,6 +277,14 @@ impl CliInterface {
                         );
                     }
                 }
+		"fi" => {
+		    // File info
+                    let file_id: String = meta.collect::<Vec<&str>>().join(" ");
+		    response_text = match api_interface.file_info(file_id) {
+			Ok(s) => s.body,
+			Err(err) => format!("{err} Failed to delete"),
+		    };
+		}
 		"fd" => {
 		    // Delete a file
                     let file_id: String = meta.collect::<Vec<&str>>().join(" ");
@@ -608,6 +616,7 @@ impl CliInterface {
 		    f List the files stored on the server\n\
 		    fu <path> Upload a file of fine tuning data\n\
 		    fd <file id> Delete a file\n\
+		    fi <file id> Get information about file\n\
 		    fl <name> <path>  Associate the contents of the `path` with `name` for use in prompts like: {{name}}\n\
  		    ?  This text\n"
                         .to_string()

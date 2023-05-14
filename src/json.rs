@@ -113,6 +113,23 @@ pub struct FileUploadResponse {
     purpose: String,
 }
 
+/// Information about a file
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileInfoResponse {
+    //   "id": "file-XjGxS3KTG0uNmNOK362iJua3",
+    pub id: String,
+    //   "object": "file",
+    pub object: String,
+    //   "bytes": 140,
+    pub bytes: usize,
+    //   "created_at": 1613779657,
+    pub created_at: u64,
+    //   "filename": "mydata.jsonl",
+    pub filename: String,
+    //   "purpose": "fine-tune"
+    pub purpose: String,
+}
+
 /// Response after file deleted
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileDeletedResponse {

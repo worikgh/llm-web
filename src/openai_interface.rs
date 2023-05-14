@@ -5,6 +5,7 @@ use crate::json::AudioTranscriptionResponse;
 use crate::json::ChatRequestInfo;
 use crate::json::CompletionRequestInfo;
 use crate::json::FileDeletedResponse;
+use crate::json::FileInfoResponse;
 use crate::json::FileUploadResponse;
 use crate::json::Files;
 use crate::json::ImageRequestInfo;
@@ -12,6 +13,7 @@ use crate::json::Message;
 use crate::json::ModelReturned;
 use crate::json::Usage;
 use crate::model_mode::ModelMode;
+use chrono::{NaiveDateTime, TimeZone, Utc};
 use curl::easy::Easy;
 use curl::easy::List;
 // use std::fs::File;
@@ -23,7 +25,7 @@ use reqwest::blocking::Client;
 use reqwest::blocking::ClientBuilder;
 use reqwest::blocking::RequestBuilder;
 use serde_json::json;
-// use serde_json::{from_str, json, Value};
+
 use std::fmt;
 use std::fmt::Display;
 use std::path::Path;
@@ -117,6 +119,45 @@ impl<'a> ApiInterface<'_> {
         }
     }
 
+    /// Get information about a file
+    pub fn file_info(&self, file_id: String) -> Result<ApiResult<String>, Box<dyn Error>> {
+        // GET https://api.openai.com/v1/files/{file_id}
+        let uri = format!("{API_URL}/files/{file_id}");
+        let response = self
+            .client
+            .get(uri.as_str())
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()?;
+        let headers = Self::header_map_to_hash_map(response.headers());
+        if response.status() != StatusCode::OK {
+            let reason = response
+                .status()
+                .canonical_reason()
+                .unwrap_or("Unknown Reason");
+            Err(Box::new(ApiError::new(
+                ApiErrorType::Status(response.status(), reason.to_string()),
+                headers,
+            )))
+        } else {
+            let fir: FileInfoResponse = response.json()?;
+            let datetime = NaiveDateTime::from_timestamp_opt(fir.created_at as i64, 0).unwrap();
+            let datetime_utc = Utc.from_utc_datetime(&datetime);
+
+            let datetime_string = datetime_utc.format("%Y-%m-%d %H:%M:%S").to_string();
+            Ok(ApiResult {
+                headers,
+                body: format!(
+                    "Size: {} Name: {} Created: {}",
+                    fir.bytes, fir.filename, datetime_string
+                ), //fir.to_string(),
+            })
+        }
+
+        // //let result = ;
+
+        // Ok(ApiResult::new("".to_string(), HashMap::new())) // { headers: (), body: ()
+    }
     /// Delete a file
     pub fn files_delete(&self, file_id: String) -> Result<ApiResult<()>, Box<dyn Error>> {
         // DELETE https://api.openai.com/v1/files/{file_id}
