@@ -244,9 +244,14 @@ impl CliInterface {
                 "f" => {
                     // List files
                     let vl = api_interface.files_list().unwrap();
+
+		    // Sort the returned list.  The OpenAI API returns
+		    // files in a random order
+		    let mut sorted_vec = vl.body;
+		    sorted_vec.sort();
                     response_text = format!(
                         ".....File ID...................Name{}",
-                        vl.body
+                        sorted_vec
                             .iter()
                             .fold(String::new(), |a, b| format!("{a}\n{}: {}", b.1, b.0))
                     );
