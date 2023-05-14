@@ -51,8 +51,8 @@ use std::result::Result;
 // * Files, list: GET https://api.openai.com/v1/files
 // * Files, upload: POST https://api.openai.com/v1/files
 // * Files, delete: DELETE https://api.openai.com/v1/files/{file_id}
-// Files, retrieve: GET https://api.openai.com/v1/files/{file_id}
-// Files, retrieve content: GET https://api.openai.com/v1/files/{file_id}/content
+// * Files, retrieve: GET https://api.openai.com/v1/files/{file_id}
+// * Files, retrieve content: GET https://api.openai.com/v1/files/{file_id}/content
 // Fine tune, create: POST https://api.openai.com/v1/fine-tunes
 // Fine tune, list: GET https://api.openai.com/v1/fine-tunes
 // Fine tune, retrieve: GET https://api.openai.com/v1/fine-tunes/{fine_tune_id}
@@ -157,6 +157,32 @@ impl<'a> ApiInterface<'_> {
         // //let result = ;
 
         // Ok(ApiResult::new("".to_string(), HashMap::new())) // { headers: (), body: ()
+    }
+
+    /// Get file cotents
+    pub fn file_contents(&self, file_id: String) -> Result<ApiResult<String>, Box<dyn Error>> {
+        // GET https://api.openai.com/v1/files/{file_id}/content
+        let uri = format!("{API_URL}/files/{file_id}/content");
+        let response = self
+            .client
+            .get(uri.as_str())
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()?;
+        let headers = Self::header_map_to_hash_map(response.headers());
+        if response.status() != StatusCode::OK {
+            let reason = response
+                .status()
+                .canonical_reason()
+                .unwrap_or("Unknown Reason");
+            Err(Box::new(ApiError::new(
+                ApiErrorType::Status(response.status(), reason.to_string()),
+                headers,
+            )))
+        } else {
+            let content = response.text()?;
+            Ok(ApiResult::new(content, headers))
+        }
     }
     /// Delete a file
     pub fn files_delete(&self, file_id: String) -> Result<ApiResult<()>, Box<dyn Error>> {

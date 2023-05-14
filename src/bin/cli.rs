@@ -279,11 +279,32 @@ impl CliInterface {
                 }
 		"fi" => {
 		    // File info
-                    let file_id: String = meta.collect::<Vec<&str>>().join(" ");
-		    response_text = match api_interface.file_info(file_id) {
-			Ok(s) => s.body,
-			Err(err) => format!("{err} Failed to delete"),
-		    };
+                    if let Some(file_id) =  meta.next() {
+			response_text = match api_interface.file_info(file_id.to_string()) {
+			    Ok(s) => s.body,
+			    Err(err) => format!("{err} Failed to delete"),
+			};
+		    }else{
+			response_text = "Enter a file ID".to_string();
+		    }
+		}
+		"fc" => {
+		    // File contents
+                    if let Some(file_id) =  meta.next() {
+			let local_file = meta.next();
+			response_text = match api_interface.file_contents(file_id.to_string()) {
+			    Ok(s) => if let Some(local_file) = local_file {
+				let mut file = File::create(local_file)?;
+				file.write_all(s.body.as_bytes())?;
+				"success".to_string()
+			    }else{
+				s.body
+			    },
+			    Err(err) => format!("{err} Failed to get contents"),
+			};
+		    }else{
+			response_text = "Enter a file ID".to_string();
+		    }
 		}
 		"fd" => {
 		    // Delete a file
@@ -617,6 +638,7 @@ impl CliInterface {
 		    fu <path> Upload a file of fine tuning data\n\
 		    fd <file id> Delete a file\n\
 		    fi <file id> Get information about file\n\
+		    fc <file id> [destination_file] Get contents of file\n\
 		    fl <name> <path>  Associate the contents of the `path` with `name` for use in prompts like: {{name}}\n\
  		    ?  This text\n"
                         .to_string()
