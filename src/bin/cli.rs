@@ -3,6 +3,7 @@ use chrono::Local;
 use code::my_helper::MyHelper;
 use directories::ProjectDirs;
 use image::ImageFormat;
+use llm_rs::api_result::ApiResult;
 use llm_rs::model_mode::ModelMode;
 use openai_interface::ApiInterface;
 use rand::distributions::Alphanumeric;
@@ -42,7 +43,7 @@ const DEFAULT_TEMPERATURE: f32 = 0.9_f32;
 const DEFAULT_MODE: &str = "chat";
 const DEFAULT_RECORD_FILE: &str = "reply.txt";
 const DEFAULT_HISTORY_FILE: &str = "history.txt";
-
+const HEADER_TOTAL_COST: &str = "TOTAL_COST";
 /// Command line argument definitions
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -617,6 +618,41 @@ impl CliInterface {
                     };
 
                 }
+		"sx" => {
+		    let file_path: String = meta.collect::<Vec<&str>>().join(" ");
+		    // Save the context into the specified file
+		    let context = api_interface.get_context()?;
+		    let serialized_context = serde_json::to_string(&context)?;
+		    response_text = format!("Saved context to {}", file_path);
+		    let mut file = File::create(file_path)?;
+		    file.write_all(serialized_context.as_bytes())?;
+
+		}
+		"rx" => {
+		    // Read the context from a file.
+		    let file_path: String = meta.collect::<Vec<&str>>().join(" ");
+		    if file_path.is_empty() {
+			response_text = format!(
+			    "Enter the path of the file containing the context: {}",
+			    current_dir()?.display()
+			);
+		    } else if PathBuf::from(file_path.as_str()).exists() {
+			// Read the contents of the file.
+			let file_contents = fs::read_to_string(Path::new(&file_path))?;
+			// Deserialize the Vec<String> from the file contents.
+			let context: Vec<String> = serde_json::from_str(&file_contents)?;
+
+			// Set the context in the API interface.
+			api_interface.set_context(context);
+
+			response_text = "Context loaded from file.".to_string();
+		    } else {
+			response_text = format!(
+			    "{file_path} does not exist. Paths relative to {}",
+			    current_dir()?.display()
+			);
+		    }
+		}
                 "?" => {
                     response_text = "\
 		    p  Display settings\n\
@@ -640,6 +676,7 @@ impl CliInterface {
 		    fi <file id> Get information about file\n\
 		    fc <file id> [destination_file] Get contents of file\n\
 		    fl <name> <path>  Associate the contents of the `path` with `name` for use in prompts like: {{name}}\n\
+		    sx <path>  Save the context to a file at the specified path\n\
  		    ?  This text\n"
                         .to_string()
                 }
@@ -658,15 +695,33 @@ impl CliInterface {
         response_headers: HashMap<String, String>,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut result = "".to_string();
-        for k in response_headers.keys() {
-            if let Some(v) = self.header_cache.get(k) {
-                if v == response_headers.get(k).unwrap() {
-                    continue;
+        if self.verbose > 0 {
+            for k in response_headers.keys() {
+                if let Some(v) = self.header_cache.get(k) {
+                    if v == response_headers.get(k).unwrap() {
+                        continue;
+                    }
                 }
+                self.header_cache
+                    .insert(k.clone(), response_headers.get(k).unwrap().clone());
+                result += &format!("{k}: {}\n", response_headers[k]);
             }
-            self.header_cache
-                .insert(k.clone(), response_headers.get(k).unwrap().clone());
-            result += &format!("{k}: {}\n", response_headers[k]);
+        } else {
+            println!("Verbose 0");
+            println!(
+                "Headers: {}",
+                response_headers
+                    .keys()
+                    .fold(String::new(), |a, b| format!("{a}, {b}"))
+            );
+            let total_cost = match response_headers.get(HEADER_TOTAL_COST) {
+                Some(c) => c.parse::<i64>().unwrap_or(-1),
+                None => -1,
+            };
+            result = match total_cost {
+                -1 => String::new(),
+                c => format!("Total Cost: {c}"),
+            };
         }
 
         // if let Some(usage) = usage {
@@ -807,13 +862,23 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 ModelMode::Chat => match api_interface.chat(prompt, cli_interface.model.as_str()) {
-                    Ok(mut r) => {
+                    Ok(mut apt_result) => {
                         // Get ready
-                        cli_interface.cost +=
-                            r.headers.get("Cost").unwrap().parse::<f64>().unwrap();
-                        r.headers
-                            .insert("Total Cost".to_string(), format!("{}", cli_interface.cost));
-                        format!("{}\n{}", cli_interface.after_request(r.headers)?, r.body,)
+                        cli_interface.cost += apt_result
+                            .headers
+                            .get("Cost")
+                            .unwrap()
+                            .parse::<f64>()
+                            .unwrap();
+                        apt_result.headers.insert(
+                            "{HEADER_TOTAL_COST}".to_string(),
+                            format!("{}", cli_interface.cost),
+                        );
+                        format!(
+                            "{}\n{}",
+                            cli_interface.after_request(apt_result.headers)?,
+                            apt_result.body,
+                        )
                     }
                     Err(err) => format!("{err}"),
                 },

@@ -418,6 +418,15 @@ impl<'a> ApiInterface<'_> {
         Ok(ApiResult::new(content, headers_ret))
     }
 
+    /// Read the record of the conversation
+    pub fn get_context(&self) -> Result<Vec<String>, Box<dyn Error>> {
+        Ok(self.context.clone())
+    }
+
+    /// Restore a record of a conversation
+    pub fn set_context(&mut self, context: Vec<String>) {
+        self.context = context;
+    }
     /// [Documented](https://platform.openai.com/docs/api-reference/completions)
     /// Takes the `prompt` and sends it to the LLM with no context.
     /// The interface has to manage no state
