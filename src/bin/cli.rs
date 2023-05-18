@@ -707,21 +707,17 @@ impl CliInterface {
                 result += &format!("{k}: {}\n", response_headers[k]);
             }
         } else {
-            println!("Verbose 0");
-            println!(
-                "Headers: {}",
-                response_headers
-                    .keys()
-                    .fold(String::new(), |a, b| format!("{a}, {b}"))
-            );
+            // println!(
+            //     "Headers: {}",
+            //     response_headers
+            //         .keys()
+            //         .fold(String::new(), |a, b| format!("{a}, {b}"))
+            // );
             let total_cost = match response_headers.get(HEADER_TOTAL_COST) {
-                Some(c) => c.parse::<i64>().unwrap_or(-1),
-                None => -1,
+                Some(c) => c,
+                None => "c",
             };
-            result = match total_cost {
-                -1 => String::new(),
-                c => format!("Total Cost: {c}"),
-            };
+            result += &format!("Total Cost: {total_cost}\n");
         }
 
         // if let Some(usage) = usage {
@@ -870,10 +866,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                             .unwrap()
                             .parse::<f64>()
                             .unwrap();
+
                         apt_result.headers.insert(
-                            "{HEADER_TOTAL_COST}".to_string(),
+                            HEADER_TOTAL_COST.to_string(),
                             format!("{}", cli_interface.cost),
                         );
+
                         format!(
                             "{}\n{}",
                             cli_interface.after_request(apt_result.headers)?,
