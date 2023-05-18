@@ -461,7 +461,7 @@ impl CliInterface {
                 "dx" => {
                     response_text = api_interface.context.join("\n");
                 }
-                "cd" => {
+                "cx" => {
                     response_text = "Clear context".to_string();
                     api_interface.clear_context();
                 }
