@@ -458,10 +458,10 @@ impl CliInterface {
                         }
                     }
                 }
-                "cd" => {
+                "dx" => {
                     response_text = api_interface.context.join("\n");
                 }
-                "cc" => {
+                "cd" => {
                     response_text = "Clear context".to_string();
                     api_interface.clear_context();
                 }
@@ -660,8 +660,8 @@ impl CliInterface {
 		    ms <model> Change the current model\n\
 		    ml List modes\
 		    m  <mode> Change mode (API endpoint\n\
-		    cd Display context (for chat)\n\
-		    cc Clear context\n\
+		    dx Display context (for chat)\n\
+		    cx Clear context\n\
 		    v  Set verbosity\n\
 		    k  Set max tokens for completions\n\
 		    t  Set temperature for completions\n\
