@@ -3,7 +3,6 @@ use chrono::Local;
 use code::my_helper::MyHelper;
 use directories::ProjectDirs;
 use image::ImageFormat;
-use llm_rs::api_result::ApiResult;
 use llm_rs::model_mode::ModelMode;
 use openai_interface::ApiInterface;
 use rand::distributions::Alphanumeric;
@@ -350,7 +349,8 @@ impl CliInterface {
                     }
                 }
                 "ml" => {
-                    response_text = "Modes\ncompletions\n\t\
+                    response_text = "Modes\n\t\
+				     completions\n\t\
 				     chat\n\t\
 				     image\n\t\
 				     image_edit\n\t\
@@ -656,7 +656,7 @@ impl CliInterface {
                 "?" => {
                     response_text = "\
 		    p  Display settings\n\
-		    md Display all available models\n\
+		    md Display all available models for the current mode\n\
 		    ms <model> Change the current model\n\
 		    ml List modes\
 		    m  <mode> Change mode (API endpoint\n\
@@ -677,6 +677,7 @@ impl CliInterface {
 		    fc <file id> [destination_file] Get contents of file\n\
 		    fl <name> <path>  Associate the contents of the `path` with `name` for use in prompts like: {{name}}\n\
 		    sx <path>  Save the context to a file at the specified path\n\
+		    rx <path>  Restore the context from a file at the specified path\n\
  		    ?  This text\n"
                         .to_string()
                 }

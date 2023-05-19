@@ -32,24 +32,48 @@ Generally text entered is sent to the LLM.
 
 Text that starts with "! " is a command to the system.  
 
-## List of Commands
+## Command Line Interface
+
+There is a [cli](https://github.com/worikgh/llm-rs/blob/mistress/src/bin/cli.rs) to flex the API.
+
+### List of Meta Commands
+
+Meta commands that effect the performance of the programme are prefixed with a `!` character, and are:
+
 |Command| Result|
 |:---|:---|
-|! p| List internal settings|
-|! md| List available models|
-|! ms <model name>| Select a model|
-|! m <mode>| Set mode. |
-|! cd | List context.  In chat mode context is maintained |
-|! cc| Clear the context.  This starts a new chat|
-|! k <int>| Set max tokens for completion models
-|! t <int>| Set temperature for completion models
-|! sp [`<prompt>`]| Set or display the `system` prompt.  This only really makes sense in chat after `! cc`  |
-|! mask <path>| Set the mask to use in image edit mode.  A 1024x1024 PNG with transparent mask
-|! ci | Clear stored images.
-|! ?| Display options|
+|! p|  Display settings|
+|! md| Display all models available available|
+|! ms| <model> Change the current model|
+|! ml| List modes  <mode> Change mode (API endpoint)|
+|! v | Set verbosity|
+|! k | Set max tokens for completions|
+|! t | Set temperature for completions|
+|! sp| Set system prompt (after `! cc`|
+|! ci| Clear image mask <path> Set the mask to use in image edit mode.  A 1024x1024 PNG with transparent mask|
+|! a |<path> Audio file for transcription|
+|! ci| Clear the image stored for editing|
+|! f |List the files stored on the server|
+|! fu| <path> Upload a file of fine tuning data|
+|! fd| <file id> Delete a file|
+|! fi| <file id> Get information about file|
+|! fc| <file id> [destination_file] Get contents of file|
+|! fl| <name> <path>  Associate the contents of the `path` with `name` for use in prompts like: {name}|
+|! dx| Display context (for chat)|
+|! cx| Clear context|
+|! sx| <path>  Save the context to a file at the specified path|
+|! rx| <path>  Restore the context from a file at the specified path|
+|! ? | This text|
+
+
 C-q or C-c to quit.
 
+### Features
 
+* **Save and restore the context of a chat**  `! sx <path>`, `! rx <path>`  Does not save the system prompt, yet.
+* **Include file content in prompt** `! fl <name> <path>`  Then "Summarise {name}"
+* **Display the cost of a chat session** It is in US cents, and an over estimate.
+* **Command History** Courtesy of [rustyline](https://crates.io/crates/rustyline)
 
 ## Modes
 
@@ -72,7 +96,7 @@ The meaning of the prompts change with the mode.
   * You answer all queries in rhyme
 .
 
-### Image and ImageEdit
+### Image and Image Edit
 
 Generate or edit images based on a prompt.
 
