@@ -115,6 +115,9 @@ struct CliInterface {
 
     /// Local data.  Generally this is reading local files of data
     local_data: HashMap<String, String>,
+
+    /// If set then "Be consise" is added to all prompts
+    be_concise: bool,
 }
 
 impl CliInterface {
@@ -226,6 +229,15 @@ impl CliInterface {
         Ok(result)
     }
 
+    /// Add the "Be consise" suffix to a prompt if the flag is set
+    fn be_concise_str(&self) -> &str {
+        if self.be_concise {
+            " Be consice"
+        } else {
+            ""
+        }
+    }
+
     /// Process prompts that are to effect or inspect the programme itself
     /// `prommpt` is what the user entered after the initial "!"
     fn process_meta(
@@ -316,7 +328,7 @@ impl CliInterface {
 		}
                 "p" => {
                     response_text = format!(
-                        "OpenAI Interface: {api_interface}\nRecord File:{}\nModel: {}\nModel Mode: {}\nImage: {:#?}\nmask: {:#?}\naudio file:{:#?}\nCompletions{}",
+                        "OpenAI Interface: {api_interface}\nRecord File:{}\nModel: {}\nModel Mode: {}\nImage: {:#?}\nmask: {:#?}\naudio file:{:#?}\nBe Concise: {}\nCompletions{}",
                         // Display the parameters
                         self.record_file,
 			self.model,
@@ -324,6 +336,7 @@ impl CliInterface {
 			self.image,
 			self.mask,
 			self.audio_file,
+			self.be_concise,
 			self.local_data.keys().fold("".to_string(), |a, b| format!("{a}\n\t{b}")),
                     );
                 }
@@ -465,6 +478,41 @@ impl CliInterface {
                     response_text = "Clear context".to_string();
                     api_interface.clear_context();
                 }
+		"ppx" => {
+		    // Print out the conversation to the passed path
+		    // in a human readable form
+			    
+		    let file_path: String = meta.collect::<Vec<&str>>().join(" ");
+		    response_text = match File::create(file_path.clone()) {
+			Ok(mut f) => {
+			    // Created file
+			    // Save the context into the specified file
+			    let context: Vec<String> = api_interface.get_context()?;
+			    // `context` has query/response pairs.  So has an even length
+			    assert!(context.len() % 2 == 0);
+			    let context = CliInterface::pretty_print_conversation(context)?;
+			    f.write_all(context.as_bytes())?;
+			    format!("Wrote context to {file_path}")
+			}
+		    
+			Err(err) => {
+			    // Failed to create file
+			    format!("{err}: Failed to open file at: {file_path}")
+			}
+
+		    };
+		}
+		"bc" => {
+		    // Set or reset `be_concise`.
+                    if let Some(v) = meta.next() {
+                        if let Ok(v) = v.parse::<bool>() {
+                            self.be_concise = v;
+                        }
+                    }
+                    response_text = format!("Be concise is {}", self.be_concise);
+                }
+		    
+		    
                 "v" => {
                     // set verbosity
                     if let Some(v) = meta.next() {
@@ -662,6 +710,7 @@ impl CliInterface {
 		    m  <mode> Change mode (API endpoint\n\
 		    dx Display context (for chat)\n\
 		    cx Clear context\n\
+		    ppx <path> Pretty print conversation to path\n\
 		    v  Set verbosity\n\
 		    k  Set max tokens for completions\n\
 		    t  Set temperature for completions\n\
@@ -733,6 +782,20 @@ impl CliInterface {
         // }
         Ok(result)
     }
+
+    pub fn pretty_print_conversation(context: Vec<String>) -> Result<String, Box<dyn Error>> {
+	let mut saved_context = String::new();
+	let mut xit = context.iter();
+	for i in 0..context.len(){
+	    if i % 2 == 0 {
+		// Query
+		saved_context = format!("{saved_context}Question : {}\n", xit.next().unwrap());
+	    }else{
+		saved_context = format!("{saved_context}Answer: {}\n", xit.next().unwrap());
+	    }
+	}
+        Ok(saved_context)
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -777,6 +840,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         image: None,
         header_cache: HashMap::new(),
         cost: 0.0,
+        be_concise: true,
         local_data: HashMap::new(),
     };
     // The file name of the conversation record
@@ -837,7 +901,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         if prompt.is_empty() {
             response_text = "No prompt\n".to_string();
         } else if prompt.starts_with('!') {
-            response_text = cli_interface.process_meta(prompt, &mut api_interface)?;
+	    let cprompt = format!("{prompt} {}",  cli_interface.be_concise_str());
+            response_text = cli_interface.process_meta(cprompt.as_str(), &mut api_interface)?;
         } else {
             // Send the prompt to the LLM
             let start_time = Local::now();
