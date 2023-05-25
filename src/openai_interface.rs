@@ -13,6 +13,7 @@ use crate::json::Message;
 use crate::json::ModelReturned;
 use crate::json::Usage;
 use crate::model_mode::ModelMode;
+use crate::shared_state::SharedState;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use curl::easy::Easy;
 use curl::easy::List;
@@ -404,10 +405,19 @@ impl<'a> ApiInterface<'_> {
         let (headers, response_string) = self.send_curl(&data, uri.as_str())?;
         let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
         let mut headers_ret = Self::usage_headers(json.usage.clone());
-        headers_ret.insert(
-            "Cost".to_string(),
-            format!("{}", Self::cost(json.usage, ModelMode::Chat, model)),
-        );
+        let cost: f64 = Self::cost(json.usage, ModelMode::Chat, model);
+        // Define a function that returns a closure
+        fn update_spent(cost: f64) -> impl FnMut(SharedState) -> SharedState {
+            move |mut ss| {
+                ss.spent += cost;
+                ss
+            }
+        }
+
+        // Call read_write_atomic with the closure
+        let ss: SharedState = SharedState::read_write_atomic(update_spent(cost))?;
+
+        headers_ret.insert("Cost".to_string(), format!("{}", ss.spent));
 
         headers_ret.extend(headers);
 

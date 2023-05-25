@@ -114,7 +114,6 @@ struct CliInterface {
 
     /// Local data.  Generally this is reading local files of data
     local_data: HashMap<String, String>,
-
 }
 
 impl CliInterface {
@@ -225,7 +224,6 @@ impl CliInterface {
             .to_string();
         Ok(result)
     }
-
 
     /// Process prompts that are to effect or inspect the programme itself
     /// `prommpt` is what the user entered after the initial "!"
@@ -769,16 +767,16 @@ impl CliInterface {
     }
 
     pub fn pretty_print_conversation(context: Vec<String>) -> Result<String, Box<dyn Error>> {
-	let mut saved_context = String::new();
-	let mut xit = context.iter();
-	for i in 0..context.len(){
-	    if i % 2 == 0 {
-		// Query
-		saved_context = format!("{saved_context}Question : {}\n", xit.next().unwrap());
-	    }else{
-		saved_context = format!("{saved_context}Answer: {}\n", xit.next().unwrap());
-	    }
-	}
+        let mut saved_context = String::new();
+        let mut xit = context.iter();
+        for i in 0..context.len() {
+            if i % 2 == 0 {
+                // Query
+                saved_context = format!("{saved_context}Question : {}\n", xit.next().unwrap());
+            } else {
+                saved_context = format!("{saved_context}Answer: {}\n", xit.next().unwrap());
+            }
+        }
         Ok(saved_context)
     }
 }
@@ -845,7 +843,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     loop {
         // Read the input text
-        let p = format!("{model}/{mode}:> ");
+        let p = format!("{}/{mode}:> ", cli_interface.model);
         read_line.helper_mut().expect("No helper").colored_prompt = format!("\x1b[1;32m{p}\x1b[0m");
         let readline = read_line.readline(&p);
         let input = match readline {
@@ -883,7 +881,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if prompt.is_empty() {
             response_text = "No prompt\n".to_string();
         } else if prompt.starts_with('!') {
-	    let cprompt = prompt;
+            let cprompt = prompt;
             response_text = cli_interface.process_meta(cprompt, &mut api_interface)?;
         } else {
             // Send the prompt to the LLM
@@ -908,7 +906,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 ModelMode::Chat => match api_interface.chat(prompt, cli_interface.model.as_str()) {
                     Ok(mut apt_result) => {
                         // Get ready
-                        cli_interface.cost += apt_result
+                        cli_interface.cost = apt_result
                             .headers
                             .get("Cost")
                             .unwrap()
