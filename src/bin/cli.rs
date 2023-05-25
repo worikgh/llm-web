@@ -1,5 +1,4 @@
 use chrono::Local;
-//use code::cli_error::CliError;
 use code::my_helper::MyHelper;
 use directories::ProjectDirs;
 use image::ImageFormat;
@@ -498,7 +497,7 @@ impl CliInterface {
 
 		    };
 		}
-		    
+		
                 "v" => {
                     // set verbosity
                     if let Some(v) = meta.next() {
@@ -749,12 +748,12 @@ impl CliInterface {
             //         .keys()
             //         .fold(String::new(), |a, b| format!("{a}, {b}"))
             // );
-            let total_cost = match response_headers.get(HEADER_TOTAL_COST) {
-                Some(c) => c,
-                None => "c",
-            };
-            result += &format!("Total Cost: {total_cost}\n");
         }
+        let total_cost = match response_headers.get(HEADER_TOTAL_COST) {
+            Some(c) => c,
+            None => "c",
+        };
+        result += &format!("Total Cost: {total_cost}\n");
 
         // if let Some(usage) = usage {
         //     let prompt_tokens = usage.prompt_tokens;
@@ -820,7 +819,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         verbose: 0,
         audio_file: None,
         model: model.to_string(),
-        model_mode: mode,
+        model_mode: mode.clone(),
         focus_image_url: None,
         mask: None,
         image: None,
@@ -844,10 +843,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     if let Some(sp) = cmd_line_opts.system_prompt {
         api_interface.system_prompt = sp;
     }
-    let mut count = 1;
     loop {
         // Read the input text
-        let p = format!("{count}> ");
+        let p = format!("{model}/{mode}:> ");
         read_line.helper_mut().expect("No helper").colored_prompt = format!("\x1b[1;32m{p}\x1b[0m");
         let readline = read_line.readline(&p);
         let input = match readline {
@@ -859,7 +857,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         };
         read_line.add_history_entry(input.as_str())?;
-        count += 1;
 
         // Expand and varoables i the prompt
 
@@ -886,8 +883,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         if prompt.is_empty() {
             response_text = "No prompt\n".to_string();
         } else if prompt.starts_with('!') {
-	    let cprompt = format!("{prompt}");
-            response_text = cli_interface.process_meta(cprompt.as_str(), &mut api_interface)?;
+	    let cprompt = prompt;
+            response_text = cli_interface.process_meta(cprompt, &mut api_interface)?;
         } else {
             // Send the prompt to the LLM
             let start_time = Local::now();

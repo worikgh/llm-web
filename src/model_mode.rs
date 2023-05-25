@@ -1,6 +1,6 @@
 use std::str::FromStr;
 /// The modes for the interaction with Open AI
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ModelMode {
     Completions,
     Chat,
@@ -16,7 +16,7 @@ const MODELS_COMPLETIONS: [&str; 6] = [
     "text-davinci-003",
     "text-davinci-edit-001",
 ];
-const MODELS_CHAT: [&str; 4] = ["gpt-3.5-turbo", "gpt-3.5-turbo-0301", "gpt-4", "gpt-4-0314"];
+const MODELS_CHAT: [&str; 2] = ["gpt-3.5-turbo", "gpt-4"];
 
 const MODELS_AUDIOTRANSCRIPTION: [&str; 1] = ["whisper-1"];
 
