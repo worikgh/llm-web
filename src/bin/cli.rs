@@ -116,8 +116,6 @@ struct CliInterface {
     /// Local data.  Generally this is reading local files of data
     local_data: HashMap<String, String>,
 
-    /// If set then "Be consise" is added to all prompts
-    be_concise: bool,
 }
 
 impl CliInterface {
@@ -229,14 +227,6 @@ impl CliInterface {
         Ok(result)
     }
 
-    /// Add the "Be consise" suffix to a prompt if the flag is set
-    fn be_concise_str(&self) -> &str {
-        if self.be_concise {
-            " Be consice"
-        } else {
-            ""
-        }
-    }
 
     /// Process prompts that are to effect or inspect the programme itself
     /// `prommpt` is what the user entered after the initial "!"
@@ -328,7 +318,14 @@ impl CliInterface {
 		}
                 "p" => {
                     response_text = format!(
-                        "OpenAI Interface: {api_interface}\nRecord File:{}\nModel: {}\nModel Mode: {}\nImage: {:#?}\nmask: {:#?}\naudio file:{:#?}\nBe Concise: {}\nCompletions{}",
+                        "OpenAI Interface: {api_interface}\n\
+			 Record File:{}\n\
+			 Model: {}\n\
+			 Model Mode: {}\n\
+			 Image: {:#?}\n\
+			 mask: {:#?}\n\
+			 audio file:{:#?}\n\
+			 Completions{}",
                         // Display the parameters
                         self.record_file,
 			self.model,
@@ -336,7 +333,6 @@ impl CliInterface {
 			self.image,
 			self.mask,
 			self.audio_file,
-			self.be_concise,
 			self.local_data.keys().fold("".to_string(), |a, b| format!("{a}\n\t{b}")),
                     );
                 }
@@ -502,16 +498,6 @@ impl CliInterface {
 
 		    };
 		}
-		"bc" => {
-		    // Set or reset `be_concise`.
-                    if let Some(v) = meta.next() {
-                        if let Ok(v) = v.parse::<bool>() {
-                            self.be_concise = v;
-                        }
-                    }
-                    response_text = format!("Be concise is {}", self.be_concise);
-                }
-		    
 		    
                 "v" => {
                     // set verbosity
@@ -840,7 +826,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         image: None,
         header_cache: HashMap::new(),
         cost: 0.0,
-        be_concise: true,
         local_data: HashMap::new(),
     };
     // The file name of the conversation record
@@ -901,7 +886,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if prompt.is_empty() {
             response_text = "No prompt\n".to_string();
         } else if prompt.starts_with('!') {
-	    let cprompt = format!("{prompt} {}",  cli_interface.be_concise_str());
+	    let cprompt = format!("{prompt}");
             response_text = cli_interface.process_meta(cprompt.as_str(), &mut api_interface)?;
         } else {
             // Send the prompt to the LLM
