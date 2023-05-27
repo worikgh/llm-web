@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::fs::{create_dir_all, OpenOptions};
 
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::path::PathBuf;
 
 // Your shared state needs to be serializable and deserializable
@@ -54,6 +54,7 @@ impl SharedState {
         };
         let state: SharedState = f(state);
         file.set_len(0)?;
+        file.rewind()?;
         let contents = serde_json::to_string(&state)?;
         file.write_all(contents.as_bytes())?;
         file.unlock()?;
