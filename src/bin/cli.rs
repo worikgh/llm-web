@@ -342,7 +342,7 @@ impl CliInterface {
                         self.model_mode,
                         model_list
                             .iter()
-                            .fold(String::new(), |a, b| format!("{a}{b}\n"))
+                            .fold(String::new(), |a, b| format!("{a}\n\t{b}"))
                     );
                 }
                 "ms" => {
