@@ -12,32 +12,24 @@ use crate::json::ImageRequestInfo;
 use crate::json::Message;
 use crate::json::ModelReturned;
 use crate::json::Usage;
-use crate::model_mode::ModelMode;
-use crate::shared_state::SharedState;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use curl::easy::Easy;
 use curl::easy::List;
-// use std::fs::File;
-// use std::io::BufReader;
-
-// use multipart::client::lazy::Multipart;
 use reqwest::blocking::multipart;
 use reqwest::blocking::Client;
 use reqwest::blocking::ClientBuilder;
 use reqwest::blocking::RequestBuilder;
-use serde_json::json;
-
-use std::fmt;
-use std::fmt::Display;
-use std::path::Path;
-use std::time::Instant;
-
 use reqwest::header::HeaderMap;
 use reqwest::StatusCode;
+use serde_json::json;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt;
+use std::fmt::Display;
 use std::io::Read;
+use std::path::Path;
 use std::result::Result;
+use std::time::Instant;
 
 // URLS:
 // * => implemented
@@ -405,19 +397,19 @@ impl<'a> ApiInterface<'_> {
         let (headers, response_string) = self.send_curl(&data, uri.as_str())?;
         let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
         let mut headers_ret = Self::usage_headers(json.usage.clone());
-        let cost: f64 = Self::cost(json.usage, ModelMode::Chat, model);
+        let cost: f64 = Self::cost(json.usage, model);
         // Define a function that returns a closure
-        fn update_spent(cost: f64) -> impl FnMut(SharedState) -> SharedState {
-            move |mut ss| {
-                ss.spent += cost;
-                ss
-            }
-        }
+        // fn update_spent(cost: f64) -> impl FnMut(SharedState) -> SharedState {
+        //     move |mut ss| {
+        //         ss.spent += cost;
+        //         ss
+        //     }
+        // }
 
-        // Call read_write_atomic with the closure
-        let ss: SharedState = SharedState::read_write_atomic(update_spent(cost))?;
+        // // Call read_write_atomic with the closure
+        // let ss: SharedState = SharedState::read_write_atomic(update_spent(cost))?
 
-        headers_ret.insert("Cost".to_string(), format!("{}", ss.spent));
+        headers_ret.insert("Cost".to_string(), format!("{}", cost)); //ss.spent));
 
         headers_ret.extend(headers);
 
@@ -642,7 +634,7 @@ impl<'a> ApiInterface<'_> {
     }
 
     /// Handle the response if the user queries what models there are
-    /// ("! md" prompt in cli)
+    /// ("! md" prompt in cli).  
     pub fn model_list(&self) -> Result<Vec<String>, Box<dyn Error>> {
         let uri: String = format!("{}/models", API_URL);
         let response = self
@@ -661,19 +653,17 @@ impl<'a> ApiInterface<'_> {
         Ok(model_returned.data.iter().map(|x| x.root.clone()).collect())
         // Ok(vec![])
     }
-    fn cost(usage: Usage, model_mode: ModelMode, model: &str) -> f64 {
-        match model_mode {
-            ModelMode::Chat => {
-                // GPT-4is more expensive
-                if model.starts_with("gpt-4") {
-                    usage.completion_tokens as f64 / 1000.0 * 12.0
-                } else if model.starts_with("gpt-3") {
-                    usage.completion_tokens as f64 / 1000.0 * 0.2
-                } else {
-                    panic!("{model}");
-                }
-            }
-            _ => panic!("cost called.  Model: {model_mode}"),
+
+    /// Convert the usege into a price.
+    fn cost(usage: Usage, model: &str) -> f64 {
+        // GPT-4is more expensive
+        if model.starts_with("gpt-4") {
+            usage.completion_tokens as f64 / 1000.0 * 12.0
+                + usage.prompt_tokens as f64 / 1000.0 * 0.06
+        } else if model.starts_with("gpt-3") {
+            usage.total_tokens as f64 / 1000.0 * 0.2
+        } else {
+            panic!("{model}");
         }
     }
     fn usage_headers(usage: Usage) -> HashMap<String, String> {
