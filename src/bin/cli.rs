@@ -1,3 +1,4 @@
+use code::shared_state::SharedState;
 use chrono::Local;
 use code::my_helper::MyHelper;
 use directories::ProjectDirs;
@@ -30,6 +31,7 @@ extern crate llm_rs;
 mod code {
     pub mod cli_error;
     pub mod my_helper;
+    pub mod shared_state;
 }
 
 use clap::Parser;
@@ -41,7 +43,7 @@ const DEFAULT_TEMPERATURE: f32 = 0.9_f32;
 const DEFAULT_MODE: &str = "chat";
 const DEFAULT_RECORD_FILE: &str = "reply.txt";
 const DEFAULT_HISTORY_FILE: &str = "history.txt";
-const HEADER_TOTAL_COST: &str = "TOTAL_COST";
+
 /// Command line argument definitions
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -740,29 +742,7 @@ impl CliInterface {
                 result += &format!("{k}: {}\n", response_headers[k]);
             }
         } else {
-            // println!(
-            //     "Headers: {}",
-            //     response_headers
-            //         .keys()
-            //         .fold(String::new(), |a, b| format!("{a}, {b}"))
-            // );
         }
-        let total_cost = match response_headers.get(HEADER_TOTAL_COST) {
-            Some(c) => c,
-            None => "c",
-        };
-        result += &format!("Total Cost: {total_cost}\n");
-
-        // if let Some(usage) = usage {
-        //     let prompt_tokens = usage.prompt_tokens;
-        //     let completion_tokens = usage.completion_tokens;
-        //     let total_tokens = usage.total_tokens;
-        //     result = format!(
-        //         "{result} Tokens: Prompt({prompt_tokens}) \
-        // 	 + Completion({completion_tokens}) \
-        // 	     == {total_tokens}\n"
-        //     );
-        // }
         Ok(result)
     }
 
@@ -904,7 +884,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 ModelMode::Chat => match api_interface.chat(prompt, cli_interface.model.as_str()) {
-                    Ok(mut apt_result) => {
+                    Ok(apt_result) => {
                         // Get ready
                         cli_interface.cost = apt_result
                             .headers
@@ -912,15 +892,25 @@ fn main() -> Result<(), Box<dyn Error>> {
                             .unwrap()
                             .parse::<f64>()
                             .unwrap();
+			fn update_spent(cost: f64) -> impl FnMut(SharedState) -> SharedState {
+			    move |mut ss| {
+				ss.spent += cost;
+				ss
+			    }
+			}
 
-                        apt_result.headers.insert(
-                            HEADER_TOTAL_COST.to_string(),
-                            format!("{}", cli_interface.cost),
-                        );
+			// Call read_write_atomic with the closure
+			let ss: SharedState = match SharedState::read_write_atomic(update_spent(cli_interface.cost)){
+			    Ok(ss) => ss,
+			    Err(err) => panic!("{err}: Failed to update costs"),
+			};
 
+			let this_cost = cli_interface.cost;
+			let total_cost = ss.spent;
+			
                         format!(
-                            "{}\n{}",
-                            cli_interface.after_request(apt_result.headers)?,
+                            "{:.2}/{:.2}{}\n{}",
+                            this_cost, total_cost, cli_interface.after_request(apt_result.headers)?,
                             apt_result.body,
                         )
                     }
