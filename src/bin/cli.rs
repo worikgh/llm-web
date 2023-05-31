@@ -1,3 +1,8 @@
+mod code {
+    pub mod cli_error;
+    pub mod my_helper;
+    pub mod shared_state;
+}
 use code::shared_state::SharedState;
 use chrono::Local;
 use code::my_helper::MyHelper;
@@ -28,11 +33,6 @@ use std::str::FromStr;
 use std::time::Instant;
 use std::{env, fs};
 extern crate llm_rs;
-mod code {
-    pub mod cli_error;
-    pub mod my_helper;
-    pub mod shared_state;
-}
 
 use clap::Parser;
 use llm_rs::openai_interface;
@@ -615,6 +615,23 @@ impl CliInterface {
                         );
                     }
                 }
+		"ft" => {
+		    // Start fine tuning a model
+                    match meta.next() {
+                        Some(name) => {
+			    response_text = match api_interface.fine_tune_create(name.to_string()) {
+				Ok(result) => format!("{:?}", result,),
+				Err(err) => format!("{err}: Failed fine_tune_create{name}"),
+			    };
+			},
+                        None => {
+                            response_text = "Cannot get name".to_string()
+                        }
+                    };
+		}
+			
+			    
+		    
                 "fl" => {
                     // Load a file's contents into a buffer to use as
                     // part of a prompt
@@ -709,6 +726,7 @@ impl CliInterface {
 		    fd <file id> Delete a file\n\
 		    fi <file id> Get information about file\n\
 		    fc <file id> [destination_file] Get contents of file\n\
+		    ft <file ID> Start a fine tune model using a JASONL training file \n\
 		    fl <name> <path>  Associate the contents of the `path` with `name` for use in prompts like: {{name}}\n\
 		    sx <path>  Save the context to a file at the specified path\n\
 		    rx <path>  Restore the context from a file at the specified path\n\
