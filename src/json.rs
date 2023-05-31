@@ -1,6 +1,4 @@
 //! The structures for building the Json prompts
-//
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -24,8 +22,6 @@ pub struct Usage {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompletionRequestInfo {
     // The `id` is in response but not used here
-    // #[serde(skip_serializing)]
-    // id: String,
     #[serde(skip_serializing)]
     pub object: String,
     #[serde(skip_serializing)]
@@ -84,7 +80,7 @@ pub struct AudioTranscriptionResponse {
     pub text: String,
 }
 
-/// To receive a list of files
+// To receive a list of files
 #[derive(Debug, Serialize, Deserialize)]
 pub struct File {
     pub id: String,
