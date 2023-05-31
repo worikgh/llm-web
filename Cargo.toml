@@ -1,6 +1,6 @@
 [package]
 name = "llm-rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Worik Stanton root@worik.org"]
 description = "A library, with a command line interface, to exploit Large Language Models"
