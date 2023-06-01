@@ -1,5 +1,6 @@
 pub mod api_error;
 pub mod api_result;
+pub mod context;
 pub mod fine_tune;
 pub mod json;
 pub mod model_mode;

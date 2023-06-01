@@ -1,6 +1,7 @@
 use crate::api_error::ApiError;
 use crate::api_error::ApiErrorType;
 use crate::api_result::ApiResult;
+use crate::context::Context;
 use crate::fine_tune::FineTune;
 use crate::json::AudioTranscriptionResponse;
 use crate::json::ChatRequestInfo;
@@ -9,8 +10,6 @@ use crate::json::FileDeletedResponse;
 use crate::json::FileInfoResponse;
 use crate::json::FileUploadResponse;
 use crate::json::Files;
-// use crate::json::FineTuneCreateResponse;
-// use crate::json::FtRoot;
 use crate::json::ImageRequestInfo;
 use crate::json::Message;
 use crate::json::ModelReturned;
@@ -50,7 +49,7 @@ use std::time::Instant;
 // * Files, delete: DELETE https://api.openai.com/v1/files/{file_id}
 // * Files, retrieve: GET https://api.openai.com/v1/files/{file_id}
 // * Files, retrieve content: GET https://api.openai.com/v1/files/{file_id}/content
-// Fine tune, create: POST https://api.openai.com/v1/fine-tunes
+// * Fine tune, create: POST https://api.openai.com/v1/fine-tunes
 // Fine tune, list: GET https://api.openai.com/v1/fine-tunes
 // Fine tune, retrieve: GET https://api.openai.com/v1/fine-tunes/{fine_tune_id}
 // Fine tune, cancel: POST https://api.openai.com/v1/fine-tunes/{fine_tune_id}/cancel
@@ -76,8 +75,7 @@ pub struct ApiInterface<'a> {
     pub temperature: f32,
 
     /// Chat keeps its state here.
-    pub context: Vec<String>,
-
+    pub context: Context,
     /// The chat model system prompt
     pub system_prompt: String,
 }
@@ -111,7 +109,7 @@ impl<'a> ApiInterface<'_> {
             tokens,
             temperature,
             // model: model.to_string(),
-            context: vec![],
+            context: Context::new(""),
             system_prompt: String::new(),
         }
     }
@@ -499,13 +497,17 @@ impl<'a> ApiInterface<'_> {
             // Conversation starting.  Append system prompt to context
             messages.push(Message {
                 role: "system".to_string(),
-                content: self.system_prompt.clone(),
+                content: "".to_string(),
             });
         } else {
+            messages.push(Message {
+                role: "system".to_string(),
+                content: self.context.purpose.clone(),
+            });
             for i in 0..self.context.len() {
                 messages.push(Message {
-                    role: "user".to_string(),
-                    content: self.context[i].clone(),
+                    role: if i % 2 == 0 { "user" } else { "assistant" }.to_string(),
+                    content: self.context.prompt_response[i].clone(),
                 });
             }
         }
@@ -527,19 +529,8 @@ impl<'a> ApiInterface<'_> {
         let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
         let mut headers_ret = Self::usage_headers(json.usage.clone());
         let cost: f64 = Self::cost(json.usage, model);
-        // Define a function that returns a closure
-        // fn update_spent(cost: f64) -> impl FnMut(SharedState) -> SharedState {
-        //     move |mut ss| {
-        //         ss.spent += cost;
-        //         ss
-        //     }
-        // }
 
-        // // Call read_write_atomic with the closure
-        // let ss: SharedState = SharedState::read_write_atomic(update_spent(cost))?
-
-        headers_ret.insert("Cost".to_string(), format!("{}", cost)); //ss.spent));
-
+        headers_ret.insert("Cost".to_string(), format!("{cost}"));
         headers_ret.extend(headers);
 
         let content = json.choices[0].message.content.clone();
@@ -550,14 +541,15 @@ impl<'a> ApiInterface<'_> {
     }
 
     /// Read the record of the conversation
-    pub fn get_context(&self) -> Result<Vec<String>, Box<dyn Error>> {
+    pub fn get_context(&self) -> Result<Context, Box<dyn Error>> {
         Ok(self.context.clone())
     }
 
     /// Restore a record of a conversation
-    pub fn set_context(&mut self, context: Vec<String>) {
+    pub fn set_context(&mut self, context: Context) {
         self.context = context;
     }
+
     /// [Documented](https://platform.openai.com/docs/api-reference/completions)
     /// Takes the `prompt` and sends it to the LLM with no context.
     /// The interface has to manage no state

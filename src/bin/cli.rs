@@ -10,6 +10,7 @@ use directories::ProjectDirs;
 use image::ImageFormat;
 use llm_rs::model_mode::ModelMode;
 use openai_interface::ApiInterface;
+use context::Context;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use regex::Regex;
@@ -36,6 +37,7 @@ extern crate llm_rs;
 
 use clap::Parser;
 use llm_rs::openai_interface;
+use llm_rs::context;
 
 const DEFAULT_MODEL: &str = "gpt-4";
 const DEFAULT_TOKENS: u32 = 2_000_u32;
@@ -467,7 +469,7 @@ impl CliInterface {
                     }
                 }
                 "dx" => {
-                    response_text = api_interface.context.join("\n");
+                    response_text = api_interface.context.as_string();
                 }
                 "cx" => {
                     response_text = "Clear context".to_string();
@@ -482,7 +484,7 @@ impl CliInterface {
 			Ok(mut f) => {
 			    // Created file
 			    // Save the context into the specified file
-			    let context: Vec<String> = api_interface.get_context()?;
+			    let context: Context = api_interface.get_context()?;
 			    // `context` has query/response pairs.  So has an even length
 			    assert!(context.len() % 2 == 0);
 			    let context = CliInterface::pretty_print_conversation(context)?;
@@ -690,7 +692,7 @@ impl CliInterface {
 			// Read the contents of the file.
 			let file_contents = fs::read_to_string(Path::new(&file_path))?;
 			// Deserialize the Vec<String> from the file contents.
-			let context: Vec<String> = serde_json::from_str(&file_contents)?;
+			let context: Context = serde_json::from_str(&file_contents)?;
 
 			// Set the context in the API interface.
 			api_interface.set_context(context);
@@ -764,17 +766,8 @@ impl CliInterface {
         Ok(result)
     }
 
-    pub fn pretty_print_conversation(context: Vec<String>) -> Result<String, Box<dyn Error>> {
-        let mut saved_context = String::new();
-        let mut xit = context.iter();
-        for i in 0..context.len() {
-            if i % 2 == 0 {
-                // Query
-                saved_context = format!("{saved_context}Question : {}\n", xit.next().unwrap());
-            } else {
-                saved_context = format!("{saved_context}Answer: {}\n", xit.next().unwrap());
-            }
-        }
+    pub fn pretty_print_conversation(context: Context) -> Result<String, Box<dyn Error>> {
+        let saved_context = context.as_string();
         Ok(saved_context)
     }
 }
@@ -984,11 +977,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             eprintln!(
                 "Conversation: {} turns and {} bytes",
                 api_interface.context.len(),
-                api_interface.context.iter().fold(0, |a, b| {
-                    // Foo bar
-                    a + b.len()
-                })
-            );
+                api_interface.context.sz());
         }
 
         _ = conversation_record_file
