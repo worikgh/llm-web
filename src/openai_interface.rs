@@ -2,7 +2,8 @@ use crate::api_error::ApiError;
 use crate::api_error::ApiErrorType;
 use crate::api_result::ApiResult;
 use crate::context::Context;
-use crate::fine_tune::FineTune;
+use crate::fine_tune_create::FineTuneCreate;
+use crate::fine_tune_list::FineTuneList;
 use crate::json::AudioTranscriptionResponse;
 use crate::json::ChatRequestInfo;
 use crate::json::CompletionRequestInfo;
@@ -382,7 +383,7 @@ impl<'a> ApiInterface<'_> {
     pub fn fine_tune_create(
         &self,
         training_file_id: String,
-    ) -> Result<ApiResult<FineTune>, Box<dyn Error>> {
+    ) -> Result<ApiResult<FineTuneCreate>, Box<dyn Error>> {
         let uri = format!("{API_URL}/fine-tunes");
         let request_body = json!({
                 "training_file": training_file_id.as_str()
@@ -399,24 +400,30 @@ impl<'a> ApiInterface<'_> {
         _ = response.read_to_string(&mut s)?;
         let headers = Self::header_map_to_hash_map(response.headers());
         let st = s.as_str();
-        let fine_tune: FineTune = serde_json::from_str(st)?;
-
-        // let body: FineTune = if response.status() != StatusCode::OK {
-        //     let reason = response
-        //         .status()
-        //         .canonical_reason()
-        //         .unwrap_or("Unknown Reason");
-        //     return Err(Box::new(ApiError::new(
-        //         ApiErrorType::Status(response.status(), reason.to_string()),
-        //         headers,
-        //     )));
-        // } else {
-        //     response.json::<FineTune>()?
-        // };
+        let fine_tune: FineTuneCreate = serde_json::from_str(st)?;
 
         Ok(ApiResult {
             headers,
             body: fine_tune,
+        })
+    }
+    pub fn fine_tune_list(&self) -> Result<ApiResult<String>, Box<dyn Error>> {
+        let uri = format!("{API_URL}/fine-tunes");
+
+        let mut response = self
+            .client
+            .get(uri)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .send()?;
+        let mut s = String::new();
+        _ = response.read_to_string(&mut s)?;
+        let st = s.as_str();
+        let fine_tune_list: FineTuneList = serde_json::from_str(st)?;
+        let headers = Self::header_map_to_hash_map(response.headers());
+        Ok(ApiResult {
+            headers,
+            body: fine_tune_list.as_string(),
         })
     }
     // pub fn fine_tune_info(

@@ -617,6 +617,13 @@ impl CliInterface {
                         );
                     }
                 }
+		"ftl" => {
+		    // List fine tune models
+		    response_text = match api_interface.fine_tune_list() {
+			Ok(vs) => vs.body,
+			Err(err) => format!("{err}: Failed ftl => fine_tune_list"),
+		    };
+		}
 		"ft" => {
 		    // Start fine tuning a model
                     match meta.next() {
