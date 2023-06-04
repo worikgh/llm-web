@@ -617,6 +617,14 @@ impl CliInterface {
                         );
                     }
                 }
+		"fti" => {
+		    // Get fine tune info
+                    let id: String = meta.collect::<Vec<&str>>().join(" ");
+		    response_text = match api_interface.fine_tune_info(id.as_str()) {
+			Ok(res) => res.body,
+			Err(err) => format!("{err}: Failed fti => fine_tune_info {id}"),			
+		    }
+		}
 		"ftl" => {
 		    // List fine tune models
 		    response_text = match api_interface.fine_tune_list() {
@@ -736,6 +744,8 @@ impl CliInterface {
 		    fi <file id> Get information about file\n\
 		    fc <file id> [destination_file] Get contents of file\n\
 		    ft <file ID> Start a fine tune model using a JASONL training file \n\
+		    ftl List fine tunes\n\
+		    fti <id> Get the info fpr a fine tune\n\
 		    fl <name> <path>  Associate the contents of the `path` with `name` for use in prompts like: {{name}}\n\
 		    sx <path>  Save the context to a file at the specified path\n\
 		    rx <path>  Restore the context from a file at the specified path\n\
