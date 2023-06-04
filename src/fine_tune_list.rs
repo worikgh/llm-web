@@ -10,7 +10,7 @@ pub struct FineTune {
     training_files: Vec<File>,
     validation_files: Vec<File>,
     result_files: Vec<File>,
-    pub created_at: u64,
+    pub created_at: i64,
     updated_at: u64,
     pub status: String,
     fine_tuned_model: Option<String>,
@@ -23,7 +23,7 @@ struct File {
     purpose: String,
     filename: String,
     bytes: u64,
-    created_at: u64,
+    created_at: i64,
     status: String,
     status_details: Option<String>,
 }

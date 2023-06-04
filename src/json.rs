@@ -86,7 +86,7 @@ pub struct File {
     pub id: String,
     object: String,
     bytes: usize,
-    created_at: usize,
+    created_at: i64,
     pub filename: String,
     purpose: String,
 }
@@ -104,7 +104,7 @@ pub struct FileUploadResponse {
     pub id: String,
     object: String,
     bytes: usize,
-    created_at: usize,
+    created_at: i64,
     filename: String,
     purpose: String,
 }
@@ -119,7 +119,7 @@ pub struct FileInfoResponse {
     //   "bytes": 140,
     pub bytes: usize,
     //   "created_at": 1613779657,
-    pub created_at: u64,
+    pub created_at: i64,
     //   "filename": "mydata.jsonl",
     pub filename: String,
     //   "purpose": "fine-tune"
