@@ -6,7 +6,7 @@ struct FineTuneEvent {
     object: String,
     level: String,
     message: String,
-    created_at: u64,
+    created_at: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -16,7 +16,7 @@ struct File {
     purpose: String,
     filename: String,
     bytes: u64,
-    created_at: u64,
+    created_at: i64,
     status: String,
     status_details: Option<String>,
 }
@@ -31,7 +31,7 @@ pub struct FineTuneCreate {
     training_files: Vec<File>,
     validation_files: Vec<File>,
     result_files: Vec<File>,
-    created_at: u64,
+    created_at: i64,
     updated_at: u64,
     status: String,
     fine_tuned_model: Option<String>,
