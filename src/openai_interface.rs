@@ -3,8 +3,8 @@ use crate::api_error::ApiErrorType;
 use crate::api_result::ApiResult;
 use crate::context::Context;
 use crate::fine_tune_create::FineTuneCreate;
-use crate::fine_tune_info::FineTuneInfo;
 use crate::fine_tune_list::FineTuneList;
+use crate::fine_tune_retrieve::FineTuneRetrieve;
 use crate::json::AudioTranscriptionResponse;
 use crate::json::ChatRequestInfo;
 use crate::json::CompletionRequestInfo;
@@ -263,7 +263,7 @@ impl<'a> ApiInterface<'_> {
         //   "id": "file-XjGxS3KTG0uNmNOK362iJua3",
         //   "object": "file",
         //   "bytes": 140,
-        //   "created_at": 1613779121,
+        //   created_at": 1613779121,
         //   "filename": "mydata.jsonl",
         //   "purpose": "fine-tune"
         // }
@@ -354,37 +354,34 @@ impl<'a> ApiInterface<'_> {
 
         Ok(ApiResult::new(response_text, headers))
     }
-    // pub fn fine_tune_retrieve(
-    //     &self,
-    //     id: String,
-    // ) -> Result<ApiResult<FineTuneCreateResponse>, Box<dyn Error>> {
-    //     let uri = format!("{API_URL}/fine-tunes/{id}");
-    //     let response = self
-    //         .client
-    //         .get(uri)
-    //         .header("Authorization", format!("Bearer {}", self.api_key))
-    //         .send()?;
+    pub fn fine_tune_retrieve(&self, id: &str) -> Result<ApiResult<String>, Box<dyn Error>> {
+        let uri = format!("{API_URL}/fine-tunes/{id}");
+        let response = self
+            .client
+            .get(uri)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()?;
 
-    //     let headers = Self::header_map_to_hash_map(response.headers());
-    //     let body: FineTuneCreateResponse = if response.status() != StatusCode::OK {
-    //         let reason = response
-    //             .status()
-    //             .canonical_reason()
-    //             .unwrap_or("Unknown Reason");
-    //         return Err(Box::new(ApiError::new(
-    //             ApiErrorType::Status(response.status(), reason.to_string()),
-    //             headers,
-    //         )));
-    //     } else {
-    //         response.json::<FineTuneCreateResponse>()?
-    //     };
+        let headers = Self::header_map_to_hash_map(response.headers());
+        let body: String = if response.status() != StatusCode::OK {
+            let reason = response
+                .status()
+                .canonical_reason()
+                .unwrap_or("Unknown Reason");
+            return Err(Box::new(ApiError::new(
+                ApiErrorType::Status(response.status(), reason.to_string()),
+                headers,
+            )));
+        } else {
+            response.json::<FineTuneRetrieve>()?.as_string()
+        };
 
-    //     Ok(ApiResult { headers, body })
-    // }
+        Ok(ApiResult { headers, body })
+    }
     pub fn fine_tune_create(
         &self,
         training_file_id: String,
-    ) -> Result<ApiResult<FineTuneCreate>, Box<dyn Error>> {
+    ) -> Result<ApiResult<String>, Box<dyn Error>> {
         let uri = format!("{API_URL}/fine-tunes");
         let request_body = json!({
                 "training_file": training_file_id.as_str()
@@ -405,7 +402,7 @@ impl<'a> ApiInterface<'_> {
 
         Ok(ApiResult {
             headers,
-            body: fine_tune,
+            body: format!("Fine Tune: {fine_tune}"),
         })
     }
     pub fn fine_tune_list(&self) -> Result<ApiResult<String>, Box<dyn Error>> {
@@ -427,54 +424,6 @@ impl<'a> ApiInterface<'_> {
             body: fine_tune_list.as_string(),
         })
     }
-    pub fn fine_tune_info(&self, id: &str) -> Result<ApiResult<String>, Box<dyn Error>> {
-        let uri = format!("{API_URL}/fine-tunes/{id}");
-        let mut response = self
-            .client
-            .get(uri)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .send()?;
-        let mut s = String::new();
-        _ = response.read_to_string(&mut s)?;
-        let st = s.as_str();
-        let fine_tune_info: FineTuneInfo = serde_json::from_str(st)?;
-        let headers = Self::header_map_to_hash_map(response.headers());
-        Ok(ApiResult {
-            headers,
-            body: fine_tune_info.as_string(),
-        })
-    }
-    // pub fn fine_tunes_list(&self) -> Result<ApiResult<FtRoot>, Box<dyn Error>> {
-    //     // endpoint
-    //     let uri = format!("{API_URL}/fine-tunes");
-    //     let response = self
-    //         .client
-    //         .get(uri)
-    //         .header("Authorization", format!("Bearer {}", self.api_key))
-    //         .send()?;
-
-    //     let headers = Self::header_map_to_hash_map(response.headers());
-    //     let response: FtRoot = if response.status() != StatusCode::OK {
-    //         let reason = response
-    //             .status()
-    //             .canonical_reason()
-    //             .unwrap_or("Unknown Reason");
-    //         return Err(Box::new(ApiError::new(
-    //             ApiErrorType::Status(response.status(), reason.to_string()),
-    //             headers,
-    //         )));
-    //     } else {
-    //         response.json::<FtRoot>()?
-    //     };
-
-    //     Ok(ApiResult {
-    //         headers, // HashMap::new(),
-    //         body: response,
-    //     })
-    // }
-    /// Finetune
-    /// Workflow:
-    ///
 
     /// Documented [here](https://platform.openai.com/docs/api-reference/chat)
     pub fn chat(&mut self, prompt: &str, model: &str) -> Result<ApiResult<String>, Box<dyn Error>> {

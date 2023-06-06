@@ -1,4 +1,7 @@
+use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FineTune {
@@ -43,11 +46,72 @@ pub struct FineTuneList {
 
 impl FineTuneList {
     pub fn as_string(&self) -> String {
-        self.data
+        format!("Fine Tule List: \n{self}")
+        // self.data
+        //     .iter()
+        //     .map(|x| format!("{} {} {}", x.id, x.created_at, x.status))
+        //     .collect::<Vec<String>>()
+        //     .iter()
+        //     .fold(String::new(), |a, b| format!("{a}\t{b}\n"))
+    }
+}
+
+impl fmt::Display for FineTune {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ID: {}\nModel: {}\nStatus: {}\nCreated At: {}\n",
+            self.id, self.model, self.status, self.created_at
+        )
+    }
+}
+
+impl fmt::Display for File {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ID: {}\nFilename: {}\nPurpose: {}\nStatus: {}\nCreated At: {}\n",
+            self.id,
+            self.filename,
+            self.purpose,
+            self.status,
+            DateTime::<Utc>::from_utc(
+                NaiveDateTime::from_timestamp_opt(self.created_at, 0).unwrap(),
+                Utc,
+            )
+        )
+    }
+}
+
+impl fmt::Display for HyperParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "n_epochs: {}\nbatch_size: {:?}\nprompt_loss_weight: {}\nlearning_rate_multiplier: {:?}\n",
+            self.n_epochs, self.batch_size, self.prompt_loss_weight, self.learning_rate_multiplier
+        )
+    }
+}
+
+impl fmt::Display for FineTuneList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let fine_tunes_str = self
+            .data
             .iter()
-            .map(|x| format!("{} {} {}", x.id, x.created_at, x.status))
+            .map(|x| {
+                format!(
+                    "Q {} {} {}",
+                    x.id,
+                    DateTime::<Utc>::from_utc(
+                        NaiveDateTime::from_timestamp_opt(x.created_at, 0).unwrap(),
+                        Utc,
+                    ),
+                    x.status
+                )
+            })
             .collect::<Vec<String>>()
-            .iter()
-            .fold(String::new(), |a, b| format!("{a}\t{b}\n"))
+            .join("\n");
+
+        write!(f, "{}", fine_tunes_str)
     }
 }
