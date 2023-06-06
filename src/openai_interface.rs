@@ -373,7 +373,7 @@ impl<'a> ApiInterface<'_> {
                 headers,
             )));
         } else {
-            response.json::<FineTuneRetrieve>()?.as_string()
+            format!("{}", response.json::<FineTuneRetrieve>()?)
         };
 
         Ok(ApiResult { headers, body })

@@ -1,15 +1,41 @@
-extern crate chrono;
 use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fmt::{self, Display, Formatter};
+use serde::Deserialize;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
+struct FineTuneEvent {
+    object: String,
+    level: String,
+    message: String,
+    created_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct File {
+    object: String,
+    id: String,
+    purpose: Option<String>,
+    filename: String,
+    bytes: i64,
+    created_at: i64,
+    status: String,
+    status_details: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HyperParameters {
+    n_epochs: u32,
+    batch_size: Option<u32>,
+    prompt_loss_weight: f64,
+    learning_rate_multiplier: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct FineTuneRetrieve {
     object: String,
     id: String,
-    hyperparams: Hyperparams,
+    hyperparams: HyperParameters,
     organization_id: String,
     model: String,
     training_files: Vec<File>,
@@ -18,92 +44,72 @@ pub struct FineTuneRetrieve {
     created_at: i64,
     updated_at: i64,
     status: String,
-    fine_tuned_model: String,
+    fine_tuned_model: Option<String>,
     events: Vec<FineTuneEvent>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Hyperparams {
-    n_epochs: u32,
-    batch_size: u32,
-    prompt_loss_weight: f64,
-    learning_rate_multiplier: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct File {
-    object: String,
-    id: String,
-    purpose: String,
-    filename: String,
-    bytes: u64,
-    created_at: i64,
-    status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    status_details: Option<HashMap<String, String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FineTuneEvent {
-    object: String,
-    level: String,
-    message: String,
-    created_at: i64,
-}
-
-impl FineTuneRetrieve {
-    pub fn as_string(&self) -> String {
-        format!("Fine Tune: {self}")
-    }
-}
-
 impl Display for FineTuneRetrieve {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        writeln!(f, "Object: {}", self.object)?;
-        writeln!(f, "ID: {}", self.id)?;
-        writeln!(f, "Organization ID: {}", self.organization_id)?;
-        writeln!(f, "Model: {}", self.model)?;
-        writeln!(f, "Status: {}", self.status)?;
-        writeln!(f, "Fine Tuned Model: {}", self.fine_tuned_model)?;
-
-        writeln!(f, "Hyperparameters:")?;
-        writeln!(f, "  N Epochs: {}", self.hyperparams.n_epochs)?;
-        writeln!(f, "  Batch Size: {}", self.hyperparams.batch_size)?;
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         writeln!(
             f,
-            "  Prompt Loss Weight: {}",
+            "object: {}\nid: {}\norganization_id: {}\nmodel: {}\ncreated_at: {}\nupdated_at: {}\nstatus: {}",
+            self.object, self.id, self.organization_id, self.model,
+            DateTime::<Utc>::from_utc(
+                NaiveDateTime::from_timestamp_opt(self.created_at, 0).unwrap(),
+                Utc,
+            ),
+            DateTime::<Utc>::from_utc(
+                NaiveDateTime::from_timestamp_opt(self.updated_at, 0).unwrap(),
+                Utc,
+            ), self.status
+        )?;
+
+        writeln!(f, "Hyper Parameters:")?;
+        writeln!(f, "  n_epochs: {}", self.hyperparams.n_epochs)?;
+        if let Some(batch_size) = self.hyperparams.batch_size {
+            writeln!(f, "  batch_size: {}", batch_size)?;
+        }
+        writeln!(
+            f,
+            "  prompt_loss_weight: {}",
             self.hyperparams.prompt_loss_weight
         )?;
-        writeln!(
-            f,
-            "  Learning Rate Multiplier: {}",
-            self.hyperparams.learning_rate_multiplier
-        )?;
+        if let Some(lr_multiplier) = self.hyperparams.learning_rate_multiplier {
+            writeln!(f, "  learning_rate_multiplier: {}", lr_multiplier)?;
+        }
 
-        writeln!(f, "\nTraining Files:")?;
+        if let Some(ref fine_tuned_model) = self.fine_tuned_model {
+            writeln!(f, "fine_tuned_model: {}", fine_tuned_model)?;
+        }
+
+        writeln!(f, "Training Files:")?;
         for file in &self.training_files {
-            writeln!(f, "  {}", file.filename)?;
+            writeln!(f, "  - {}", file.filename)?;
         }
 
-        writeln!(f, "\nValidation Files:")?;
+        writeln!(f, "Validation Files:")?;
         for file in &self.validation_files {
-            writeln!(f, "  {}", file.filename)?;
+            writeln!(f, "  - {}", file.filename)?;
         }
 
-        writeln!(f, "\nResult Files:")?;
+        writeln!(f, "Result Files:")?;
         for file in &self.result_files {
-            writeln!(f, "  {}", file.filename)?;
+            writeln!(f, "  - {}", file.filename)?;
         }
 
-        writeln!(f, "\nEvents:")?;
+        writeln!(f, "Events:")?;
         for event in &self.events {
-            let ts = DateTime::<Utc>::from_utc(
-                NaiveDateTime::from_timestamp_opt(event.created_at, 0).unwrap(),
-                Utc,
-            )
-            .format("%Y-%m-%d %H:%M:%S %Z")
-            .to_string();
-            writeln!(f, "  {ts}: {}: {}", event.level, event.message)?;
+            writeln!(
+                f,
+                "  - [{}] {}: {} at {}",
+                event.level,
+                event.object,
+                event.message,
+                DateTime::<Utc>::from_utc(
+                    NaiveDateTime::from_timestamp_opt(event.created_at, 0).unwrap(),
+                    Utc,
+                )
+            )?;
         }
 
         Ok(())
