@@ -476,7 +476,7 @@ impl<'a> ApiInterface<'_> {
         let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
         let mut headers_ret = Self::usage_headers(json.usage.clone());
         let cost: f64 = Self::cost(json.usage, model);
-
+        self.context.cost += cost;
         headers_ret.insert("Cost".to_string(), format!("{cost}"));
         headers_ret.extend(headers);
 

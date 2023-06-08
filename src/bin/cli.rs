@@ -935,10 +935,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 			let this_cost = cli_interface.cost;
 			let total_cost = ss.spent;
-			
+			let conversation_cost = api_interface.context.cost;
                         format!(
-                            "{:.2}/{:.2}{}\n{}",
-                            this_cost, total_cost, cli_interface.after_request(apt_result.headers)?,
+                            "{:.2}/{:.2}/{:.2}:{}{}\n{}",
+                            this_cost, conversation_cost, total_cost, api_interface.context.len(), cli_interface.after_request(apt_result.headers)?,
                             apt_result.body,
                         )
                     }
