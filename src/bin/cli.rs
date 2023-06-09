@@ -337,6 +337,10 @@ impl CliInterface {
 			self.local_data.keys().fold("".to_string(), |a, b| format!("{a}\n\t{b}")),
                     );
                 }
+		"mm" => {
+		    // Display all the info we can get about models
+		    response_text = "Unimplemented".to_string();
+		}
                 "md" => {
                     // Display known models
                     let mut model_list: Vec<&str> = self.model_mode.models_available();
@@ -723,6 +727,7 @@ impl CliInterface {
                 "?" => {
                     response_text = "\
 		    p  Display settings\n\
+		    mm Display all available information about all models\n\
 		    md Display all available models for the current mode\n\
 		    ms <model> Change the current model\n\
 		    ml List modes\

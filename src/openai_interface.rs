@@ -702,7 +702,7 @@ impl<'a> ApiInterface<'_> {
     }
 
     /// Handle the response if the user queries what models there are
-    /// ("! md" prompt in cli).  
+    /// ("! mm" prompt in cli).  
     pub fn model_list(&self) -> Result<Vec<String>, Box<dyn Error>> {
         let uri: String = format!("{}/models", API_URL);
         let response = self
