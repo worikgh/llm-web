@@ -16,6 +16,7 @@ use crate::json::ImageRequestInfo;
 use crate::json::Message;
 use crate::json::ModelReturned;
 use crate::json::Usage;
+use crate::model_info::ModelInfo;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use curl::easy::Easy;
 use curl::easy::List;
@@ -703,9 +704,9 @@ impl<'a> ApiInterface<'_> {
 
     /// Handle the response if the user queries what models there are
     /// ("! mm" prompt in cli).  
-    pub fn model_list(&self) -> Result<Vec<String>, Box<dyn Error>> {
+    pub fn model_list(&self) -> Result<ApiResult<String>, Box<dyn Error>> {
         let uri: String = format!("{}/models", API_URL);
-        let response = self
+        let mut response = self
             .client
             .get(uri.as_str())
             .header("Content-Type", "application/json")
@@ -716,10 +717,13 @@ impl<'a> ApiInterface<'_> {
             // This will not happen
             panic!("Failed call to get model list. {:?}", response);
         }
-        let model_returned: ModelReturned = response.json().unwrap();
-        println!("{:?}", model_returned);
-        Ok(model_returned.data.iter().map(|x| x.root.clone()).collect())
-        // Ok(vec![])
+        let mut s = String::new();
+        _ = response.read_to_string(&mut s)?;
+        let st = s.as_str();
+        let model_info: ModelInfo = serde_json::from_str(st)?;
+        let body: String = format!("{model_info}");
+        let headers = Self::header_map_to_hash_map(response.headers());
+        Ok(ApiResult { headers, body })
     }
 
     /// Convert the usege into a price.

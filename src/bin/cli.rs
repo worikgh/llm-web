@@ -339,7 +339,10 @@ impl CliInterface {
                 }
 		"mm" => {
 		    // Display all the info we can get about models
-		    response_text = "Unimplemented".to_string();
+		    response_text = match api_interface.model_list() {
+			Ok(s) => s.body,
+			Err(err) => format!("{err}: Failed to get model list"),
+		    }
 		}
                 "md" => {
                     // Display known models
