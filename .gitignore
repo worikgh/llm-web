@@ -37,7 +37,6 @@ examples/rust_wasm.txt
 examples/rust_wasm.txt~
 examples/rust_wasm_clean.txt
 one Be consice
-src/context.rs
 src/fine_tune.json
 static network rasperry pi
 sx1
