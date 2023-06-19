@@ -1,0 +1,11 @@
+[package]
+name = "llm_web_be"
+version = "0.1.0"
+authors = ["Your Name <your_email@example.com>"]
+edition = "2018"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+llm-web-common = {path = "../llm-web-common"}
+fs2 = "0.4"
