@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 use llm_web_common::Claims;
+use rand::prelude::*;
 use wasm_bindgen::prelude::*;
 mod chat_div;
 mod claims;
@@ -13,15 +14,40 @@ mod utility;
 use chat_div::chat_div;
 use login_div::authenticated;
 use login_div::login_div;
+use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use set_page::set_page;
 use utility::print_to_console;
 use web_sys::window;
+
+use crate::utility::print_to_console_s;
 /// The main entry point.
 fn start_app() -> Result<(), JsValue> {
     print_to_console("start_app");
+
+    let mut rng = rand::thread_rng();
+    let bits = 2048;
+    let priv_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate a key");
+    let pub_key = RsaPublicKey::from(&priv_key);
+
+    // Encrypt
+    let data = b"hello world";
+    let enc_data = pub_key
+        .encrypt(&mut rng, Pkcs1v15Encrypt, &data[..])
+        .expect("failed to encrypt");
+    assert_ne!(&data[..], &enc_data[..]);
+
+    // Decrypt
+    let dec_data = priv_key
+        .decrypt(Pkcs1v15Encrypt, &enc_data)
+        .expect("failed to decrypt");
+    assert_eq!(&data[..], &dec_data[..]);
+
+    print_to_console_s(format!("start_app: {:?}", pub_key));
+
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
+
     let body = document.body().expect("Could not access document.body");
 
     if let Some(claims) = authenticated() {

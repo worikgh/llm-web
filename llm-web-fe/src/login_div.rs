@@ -5,15 +5,11 @@ use crate::utility::print_to_console;
 use crate::utility::print_to_console_s;
 use gloo_storage::LocalStorage;
 use gloo_storage::Storage;
-// use hmac::{Hmac, Mac};
-// use jwt::SignWithKey;
-use llm_web_common::decode_jwt;
-use llm_web_common::encode_jwt;
+
+use llm_web_common::decode_claims;
+use llm_web_common::encode_claims;
 use llm_web_common::timestamp_wts;
 use llm_web_common::Claims;
-// use sha2::Sha256;
-// use std::error::Error;
-// use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsValue;
@@ -110,9 +106,9 @@ pub fn login(username: &str, password: &str) -> Result<Claims, String> {
 
     if password == user_password {
         let claims = Claims::new(username.to_string(), timestamp_wts());
-        match encode_jwt(&claims, &SECRET_KEY) {
+        match encode_claims(&claims, &SECRET_KEY) {
             Ok(jwt) => {
-                let claims: Claims = decode_jwt(jwt.as_str(), &SECRET_KEY)?;
+                let claims: Claims = decode_claims(jwt.as_str(), &SECRET_KEY)?;
                 Ok(claims)
             }
             Err(_) => Err("Error creating JWT.".to_string()),

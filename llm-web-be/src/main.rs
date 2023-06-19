@@ -1,6 +1,6 @@
 mod authorisation;
 use authorisation::authorise;
-use llm_web_common::encode_jwt_nowasm;
+use llm_web_common::encode_claims_nowasm;
 use llm_web_common::Claims;
 use llm_web_common::LoginRequest;
 use llm_web_common::LoginResponse;
@@ -30,7 +30,7 @@ fn handle_client(mut stream: TcpStream) -> io::Result<usize> {
             let response = match process_login(request) {
                 Some(claims) => {
                     // Encode `claims` into a JWT
-                    let token = match encode_jwt_nowasm(&claims, SHARED_SECRET) {
+                    let token = match encode_claims_nowasm(&claims, SHARED_SECRET) {
                         Ok(t) => t,
                         Err(err) => {
                             return Err(io::Error::new(

@@ -1,6 +1,4 @@
 use hmac::{Hmac, Mac};
-use jwt::SignWithKey;
-use jwt::VerifyWithKey;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::error::Error;
@@ -54,31 +52,26 @@ impl fmt::Display for Claims {
 
 // Function to encode a JWT for a given username and secret
 #[wasm_bindgen]
-pub fn encode_jwt(claims: &Claims, secret: &[u8]) -> Result<String, String> {
-    _encode_jwt(claims, secret).map_err(|e| e.to_string())
+pub fn encode_claims(claims: &Claims, secret: &[u8]) -> Result<String, String> {
+    _encode_claims(claims, secret).map_err(|e| e.to_string())
 }
 
-pub fn encode_jwt_nowasm(claims: &Claims, secret: &[u8]) -> Result<String, Box<dyn Error>> {
-    _encode_jwt(claims, secret)
+pub fn encode_claims_nowasm(claims: &Claims, secret: &[u8]) -> Result<String, Box<dyn Error>> {
+    _encode_claims(claims, secret)
 }
 
-pub fn decode_jwt(token: &str, secret: &[u8]) -> Result<Claims, String> {
-    _decode_jwt(token, secret).map_err(|e| e.to_string())
+pub fn decode_claims(token: &str, secret: &[u8]) -> Result<Claims, String> {
+    _decode_claims(token, secret).map_err(|e| e.to_string())
 }
 
-fn _encode_jwt(claims: &Claims, secret: &[u8]) -> Result<String, Box<dyn Error>> {
+fn _encode_claims(claims: &Claims, secret: &[u8]) -> Result<String, Box<dyn Error>> {
     // let claim_name = username.to_string();
-    let key: Hmac<Sha256> = Hmac::new_from_slice(secret)?;
-    let token_str = claims.sign_with_key(&key)?;
-    Ok(token_str)
+    Ok("Unimplemented".to_string())
 }
 
-fn _decode_jwt(token: &str, secret: &[u8]) -> Result<Claims, Box<dyn Error>> {
+fn _decode_claims(token: &str, secret: &[u8]) -> Result<Claims, Box<dyn Error>> {
     let key: Hmac<Sha256> = Hmac::new_from_slice(secret).unwrap();
-    let claims: Claims = match token.verify_with_key(&key) {
-        Ok(c) => c,
-        Err(err) => return Err(Box::new(err)),
-    };
+    let claims: Claims = Claims::new("Unimplemented".to_string(), 0);
     Ok(claims)
 }
 
