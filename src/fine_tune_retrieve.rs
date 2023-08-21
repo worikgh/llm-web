@@ -12,6 +12,7 @@ struct FineTuneEvent {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct File {
     object: String,
     id: String,

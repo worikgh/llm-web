@@ -40,6 +40,7 @@ impl Context {
     }
     pub fn clear(&mut self) {
         self.prompt_response.clear();
+        self.cost = 0.0;
     }
     pub fn sz(&self) -> usize {
         // Memory usage of the purpose String
