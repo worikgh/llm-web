@@ -389,17 +389,17 @@ impl CliInterface {
                                 // A conversation with the LLM. `system_prompt` sets
                                 // the tone of the conversation.  It can be over
                                 // ridden here, and there must be some prompt
-                                let system_prompt = meta.collect::<Vec<&str>>().join(" ");
-                                if system_prompt.is_empty()
-                                    && api_interface.system_prompt.is_empty()
+                                let purpose = meta.collect::<Vec<&str>>().join(" ");
+                                if purpose.is_empty()
+                                    && api_interface.context.purpose.is_empty()
                                 {
                                     response_text =
                                         "Provide a system prompt for the chat".to_string();
                                 } else {
                                     self.model_mode = ModelMode::Chat;
                                     response_text = "Model mode => Chat\n".to_string();
-                                    if !system_prompt.is_empty() {
-                                        api_interface.system_prompt = system_prompt;
+                                    if !purpose.is_empty() {
+                                        api_interface.context.purpose = purpose;
                                     }
                                 }
                             }
@@ -559,15 +559,15 @@ impl CliInterface {
                     } else {
                         let system_prompt = meta.collect::<Vec<&str>>().join(" ");
                         if system_prompt.is_empty() {
-                            if api_interface.system_prompt.is_empty() {
+                            if api_interface.context.purpose.is_empty() {
                                 response_text = "Provide a system prompt for the chat".to_string();
                             } else {
                                 response_text =
-                                    format!("System Prompt {}", api_interface.system_prompt);
+                                    format!("System Prompt {}", api_interface.context.purpose);
                             }
                         } else {
                             response_text = format!("System Prompt {system_prompt}");
-                            api_interface.system_prompt = system_prompt;
+                            api_interface.context.purpose = system_prompt;
                         }
                     }
                 }
@@ -853,9 +853,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .unwrap();
     let mut read_line: Editor<MyHelper, FileHistory> = cli_interface.set_up_read_line()?;
     let mut prompt: String;
-    let mut api_interface = ApiInterface::new(api_key, tokens, temperature);
+    let mut api_interface = ApiInterface::new(api_key.to_string(), tokens, temperature);
     if let Some(sp) = cmd_line_opts.system_prompt {
-        api_interface.system_prompt = sp;
+        api_interface.context.purpose = sp;
     }
     loop {
         // Read the input text
