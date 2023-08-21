@@ -14,7 +14,6 @@ use crate::json::FileUploadResponse;
 use crate::json::Files;
 use crate::json::ImageRequestInfo;
 use crate::json::Message;
-use crate::json::ModelReturned;
 use crate::json::Usage;
 use crate::model_info::ModelInfo;
 use chrono::{NaiveDateTime, TimeZone, Utc};
@@ -64,12 +63,12 @@ use std::time::Instant;
 const API_URL: &str = "https://api.openai.com/v1";
 
 #[derive(Debug)]
-pub struct ApiInterface<'a> {
+pub struct ApiInterface {
     /// Handles the communications with OpenAI
     client: Client,
 
     /// The secret key from OpenAI
-    api_key: &'a str,
+    api_key: String,
 
     /// Restricts the amount of text returned
     pub tokens: u32,
@@ -79,28 +78,28 @@ pub struct ApiInterface<'a> {
 
     /// Chat keeps its state here.
     pub context: Context,
-    /// The chat model system prompt
-    pub system_prompt: String,
 }
 
-impl Display for ApiInterface<'_> {
+impl Display for ApiInterface {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "Temperature: {}\n\
 		     Tokens: {}\n\
 		     Context length: {}\n\
+		     Context cost: {:2}\n\
 		     System prompt: {}",
             self.temperature,
             self.tokens,
             self.context.len(),
-            self.system_prompt,
+            self.context.cost,
+            self.context.purpose,
         )
     }
 }
 
-impl<'a> ApiInterface<'_> {
-    pub fn new(api_key: &'a str, tokens: u32, temperature: f32) -> ApiInterface<'a> {
+impl ApiInterface {
+    pub fn new(api_key: String, tokens: u32, temperature: f32) -> ApiInterface {
         ApiInterface {
             client: ClientBuilder::new()
                 .timeout(std::time::Duration::from_secs(1200))
@@ -113,7 +112,6 @@ impl<'a> ApiInterface<'_> {
             temperature,
             // model: model.to_string(),
             context: Context::new(""),
-            system_prompt: String::new(),
         }
     }
 
@@ -430,9 +428,6 @@ impl<'a> ApiInterface<'_> {
     pub fn chat(&mut self, prompt: &str, model: &str) -> Result<ApiResult<String>, Box<dyn Error>> {
         // An ongoing conversation with the LLM
 
-        // endpoint
-        let uri = format!("{}/chat/completions", API_URL);
-
         // Model can be any of: gpt-4, gpt-4-0314, gpt-4-32k,
         // gpt-4-32k-0314, gpt-3.5-turbo, gpt-3.5-turbo-0301
         // https://platform.openai.com/docs/models/model-endpoint-compatibility
@@ -470,24 +465,35 @@ impl<'a> ApiInterface<'_> {
             "messages": messages,
             "model": model,
         });
-
-        // Send the request and get the Json data as a String, convert
-        // into ``ChatRequestInfo`
-        let (headers, response_string) = self.send_curl(&data, uri.as_str())?;
-        let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
-        let mut headers_ret = Self::usage_headers(json.usage.clone());
-        let cost: f64 = Self::cost(json.usage, model);
+        let headers_json: (HashMap<String, String>, ChatRequestInfo) =
+            Self::send_chat(self.api_key.as_str(), &data)?;
+        let mut headers_ret = Self::usage_headers(headers_json.1.usage.clone());
+        let cost: f64 = Self::cost(headers_json.1.usage, model);
         self.context.cost += cost;
         headers_ret.insert("Cost".to_string(), format!("{cost}"));
-        headers_ret.extend(headers);
+        headers_ret.extend(headers_json.0);
 
-        let content = json.choices[0].message.content.clone();
+        let content = headers_json.1.choices[0].message.content.clone();
         self.context.push(prompt.to_string());
         self.context.push(content.clone());
 
         Ok(ApiResult::new(content, headers_ret))
     }
 
+    /// Send the data to the OpenAI server and return the response with headers.  This maintains no state
+    pub fn send_chat(
+        api_key: &str,
+        data: &serde_json::Value,
+    ) -> Result<(HashMap<String, String>, ChatRequestInfo), Box<dyn Error>> {
+        // Send the request and get the Json data as a String, convert
+        // into ``ChatRequestInfo`
+
+        // endpoint
+        let uri = format!("{}/chat/completions", API_URL);
+        let (headers, response_string) = Self::send_curl(api_key, data, uri.as_str())?;
+        let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
+        Ok((headers, json))
+    }
     /// Read the record of the conversation
     pub fn get_context(&self) -> Result<Context, Box<dyn Error>> {
         Ok(self.context.clone())
@@ -771,7 +777,7 @@ impl<'a> ApiInterface<'_> {
     /// Send a request, the body of which is coded in `data`, to `uri`.
     /// Return the Json data as a String
     fn send_curl(
-        &mut self,
+        api_key: &str,
         data: &serde_json::Value,
         uri: &str,
     ) -> Result<(HashMap<String, String>, String), Box<dyn Error>> {
@@ -783,7 +789,7 @@ impl<'a> ApiInterface<'_> {
 
         // Prepare the headers
         let mut list = List::new();
-        list.append(format!("Authorization: Bearer {}", self.api_key).as_str())?;
+        list.append(format!("Authorization: Bearer {}", api_key).as_str())?;
         list.append("Content-Type: application/json")?;
         curl_easy.http_headers(list)?;
 
