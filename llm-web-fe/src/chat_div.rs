@@ -1,12 +1,89 @@
 use crate::cost_div::cost_div;
+use crate::make_request::make_request;
 use crate::manipulate_css::add_css_rule;
 use crate::manipulate_css::clear_css;
+use crate::set_page::set_focus_on_element;
 #[allow(unused_imports)]
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
+// use llm_rs;
+use llm_web_common::communication::ChatPrompt;
+use llm_web_common::communication::ChatResponse;
+use llm_web_common::communication::CommType;
+use llm_web_common::communication::Message;
 use wasm_bindgen::prelude::*;
-use web_sys::{Document, Element, HtmlInputElement};
+use web_sys::{
+    window, Document, Element, HtmlButtonElement, HtmlInputElement, HtmlOptionElement,
+    HtmlSelectElement,
+};
+
+/// The callback for `make_request`
+fn chat_request(message: Message) {
+    match message.comm_type {
+        CommType::ChatResponse => {
+            let chat_response: ChatResponse =
+                serde_json::from_str(message.object.as_str()).unwrap();
+            // pub struct ChatRequestInfo {
+            // :
+            // 	pub model: String,
+            // 	pub usage: Usage,
+            // 	pub choices: Vec<ChatChoice>,
+            // }
+            let model = chat_response.request_info.model;
+            let usage = chat_response.request_info.usage;
+            let choices = chat_response.request_info.choices;
+            let choice = choices.first();
+        }
+        _ => (),
+    };
+}
+
+/// The callback for the submit button to send a prompt to the model
+fn chat_submit() {
+    print_to_console("Submit clicked");
+    // Get the contents of the prompt
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let prompt_input: HtmlInputElement = document
+        .get_element_by_id("prompt-input")
+        .unwrap()
+        .dyn_into::<HtmlInputElement>()
+        .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
+        .unwrap();
+    let prompt = prompt_input.value();
+
+    let model_selection: HtmlSelectElement = document
+        .get_element_by_id("model-chat")
+        .unwrap()
+        .dyn_into::<HtmlSelectElement>()
+        .map_err(|err| format!("Error casting to HtmlOptionsCollection: {err:?}",))
+        .unwrap();
+    let model: String = if let Some(element) = model_selection.selected_options().item(0) {
+        element.get_attribute("value").unwrap()
+    } else {
+        todo!("Handle this")
+    };
+
+    // Get token
+    let token: String;
+    if let Some(t) = document.body().unwrap().get_attribute("data-token") {
+        token = t;
+    } else {
+        todo!("Set status concerning error: No data token");
+    }
+
+    let chat_prompt = ChatPrompt {
+        model,
+        prompt,
+        token,
+    };
+
+    let message: Message = Message::from(chat_prompt);
+    make_request(message, chat_request).unwrap();
+}
+
 /// Screen fo the `chat` model interface
 pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     // The container DIV that arranges the page
@@ -23,20 +100,21 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         .create_element("div")
         .expect("Could not create DIV element");
     response_div.set_id("response-div");
-    let response_inp: HtmlInputElement = document
-        .create_element("input")
-        .map_err(|err| format!("Error creating input element: {:?}", err))?
-        .dyn_into::<HtmlInputElement>()
-        .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))?;
-    response_inp.set_value("response");
-    response_inp.set_type("text");
-    response_div.append_child(&response_inp)?;
 
     // The entry for the prompt
     let prompt_div = document
         .create_element("div")
         .expect("Could not create DIV element");
     prompt_div.set_id("prompt-div");
+    let prompt_inp: HtmlInputElement = document
+        .create_element("input")
+        .map_err(|err| format!("Error creating input element: {:?}", err))?
+        .dyn_into::<HtmlInputElement>()
+        .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))?;
+    prompt_inp.set_value("prompt goes here");
+    prompt_inp.set_type("text");
+    prompt_inp.set_id("prompt-input");
+    prompt_div.append_child(&prompt_inp)?;
 
     // The button menu
     let button_div = document
@@ -44,11 +122,44 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         .expect("Could not create DIV element");
     button_div.set_id("button-div");
 
+    // The submit button
+    let submit_button: HtmlButtonElement = document
+        .create_element("button")
+        .map_err(|err| format!("Error creating button element: {:?}", err))?
+        .dyn_into::<HtmlButtonElement>()
+        .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
+    submit_button.set_inner_text("submit");
+    submit_button.set_id("chat-submit");
+    let closure = Closure::wrap(Box::new(chat_submit) as Box<dyn Fn()>);
+    submit_button.set_onclick(Some(closure.as_ref().unchecked_ref()));
+    closure.forget();
+
+    button_div.append_child(&submit_button)?;
+
     // The side_panel menu
     let side_panel_div = document
         .create_element("div")
         .expect("Could not create DIV element");
     side_panel_div.set_id("side-panel-div");
+
+    // Create the model selection tool
+    let select_element = document
+        .create_element("select")
+        .unwrap()
+        .dyn_into::<HtmlSelectElement>()
+        .unwrap();
+    select_element.set_id("model-chat");
+    let options = select_element.options();
+
+    options.add_with_html_option_element(&HtmlOptionElement::new_with_text_and_value(
+        "Gpt-3",
+        "gpt-3.5-turbo",
+    )?)?;
+
+    options.add_with_html_option_element(&HtmlOptionElement::new_with_text_and_value(
+        "Gpt-4", "gpt-4",
+    )?)?;
+    side_panel_div.append_child(&select_element)?;
 
     // The status bar
     let status_div = document
@@ -219,6 +330,8 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         "border",
         "thick double #ff00ff".to_string(),
     )?;
+    add_css_rule(document, "#prompt-input", "width", "100%".to_string())?;
+    add_css_rule(document, "#prompt-input", "height", "100%".to_string())?;
 
     add_css_rule(
         document,
@@ -231,6 +344,13 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         "#button-div",
         "grid-row",
         format!("{button_t} / span {button_h}"),
+    )?;
+    add_css_rule(document, "#button-div", "display", "flex".to_string())?;
+    add_css_rule(
+        document,
+        "#button-div",
+        "justify-content",
+        "center".to_string(),
     )?;
     add_css_rule(
         document,
@@ -276,22 +396,12 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         "border",
         "thick double #ffff00".to_string(),
     )?;
+
     response_div.set_inner_html(
         format!("response t,l/WxH {response_t},{response_l}/{response_w}x{response_h}").as_str(),
     );
-    prompt_div.set_inner_html(
-        format!("prompt t,l/WxH {prompt_t},{prompt_l}/{prompt_w}x{prompt_h}").as_str(),
-    );
-    button_div.set_inner_html(
-        format!("button t,l/WxH {button_t},{button_l}/{button_w}x{button_h}").as_str(),
-    );
-    status_div.set_inner_html(
-        format!("status t,l/WxH {status_t},{status_l}/{status_w}x{status_h}").as_str(),
-    );
-    side_panel_div.set_inner_html(
-        format!("side_panel t,l/WxH {side_panel_t},{side_panel_l}/{side_panel_w}x{side_panel_h}")
-            .as_str(),
-    );
+
+    set_focus_on_element(&document, "prompt-input");
 
     Ok(grid_container)
 }

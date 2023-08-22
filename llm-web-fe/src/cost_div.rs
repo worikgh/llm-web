@@ -6,6 +6,7 @@ pub fn cost_div(document: &Document) -> Element {
     let cost_div = document
         .create_element("div")
         .expect("Could not create DIV element");
+    cost_div.set_id("cost-div");
     let cost_text_span = document
         .create_element("span")
         .expect("Could not create DIV element");

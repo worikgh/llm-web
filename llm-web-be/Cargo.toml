@@ -1,11 +1,45 @@
 [package]
 name = "llm_web_be"
 version = "0.1.0"
-authors = ["Your Name <your_email@example.com>"]
+authors = ["Worik <root@worik.org>"]
 edition = "2018"
 
 [dependencies]
+aes = "0.8.3"
+aes-gcm = "0.10.2"
+async-lock = "2.7.0"
+# websocket = "0.26.5"
+async-std = "1.12.0"
+base64 = "0.21.2"
+bcrypt = "0.15.0"
+block-modes = "0.9.1"
+chrono = {version="0.4.26", features=["serde"]}
+env_logger = "0.10.0"
+fs2 = "0.4"
+futures = "0.3.28"
+futures-channel = "0.3.28"
+futures-util = "0.3.28"
+hex = "0.4.3"
+hyper = {version="0.14", features=["full"]}
+hyper-rustls = "0.24.1"
+llm-rs={path="../../llm-rs"}
+llm-web-common = {path = "../llm-web-common"}
+log = "0.4.19"
+rand = "0.8.5"
+rsa = {version = "0.9", features = ["serde"]}
+rustls = "0.21.5"
+rustls-pemfile = "1.0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-llm-web-common = {path = "../llm-web-common"}
-fs2 = "0.4"
+simple_crypt = "0.2.3"
+tokio = { version = "1.29.0", default-features = false, features = ["full"] }
+url = "2.4.0"
+uuid = {version = "1.4.1", features = [
+     "v4",                # Lets you generate random UUIDs
+     "fast-rng",          # Use a faster (but still sufficiently random) RNG
+     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+     "serde",
+]}   
+
+[features]
+acceptor = []

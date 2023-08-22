@@ -1,60 +1,78 @@
+// mod authorisation;
+// mod session;
+// mod websocket_server;
+// use crate::server::Server;
+extern crate bcrypt;
+extern crate llm_rs;
+extern crate llm_web_common;
 mod authorisation;
-use authorisation::authorise;
-use llm_web_common::encode_claims_nowasm;
-use llm_web_common::Claims;
-use llm_web_common::LoginRequest;
-use llm_web_common::LoginResponse;
-use std::io::{self, Read, Write};
-use std::net::{TcpListener, TcpStream};
-const SHARED_SECRET: &[u8] = b"i5r1 hu_#ikd 7h3 H0rf7z w98";
-fn main() -> io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                handle_client(stream)?;
-            }
-            Err(e) => {
-                println!("Error: {}", e);
-            }
-        }
-    }
-    Ok(())
-}
+mod server;
+mod session;
+use std::env;
+//use async_std::task;
 
-fn handle_client(mut stream: TcpStream) -> io::Result<usize> {
-    let mut buffer = [0; 1024];
-    match stream.read(&mut buffer) {
-        Ok(n) => {
-            let request: LoginRequest = serde_json::from_slice(&buffer[..n]).unwrap();
-            let response = match process_login(request) {
-                Some(claims) => {
-                    // Encode `claims` into a JWT
-                    let token = match encode_claims_nowasm(&claims, SHARED_SECRET) {
-                        Ok(t) => t,
-                        Err(err) => {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("{err}:").as_str(),
-                            ));
-                        }
-                    };
-                    Some(LoginResponse { token: Some(token) })
+#[allow(dead_code)]
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+// main
+#[tokio::main]
+async fn main() {
+    let mut args: env::Args = env::args();
+    // There is always one argument
+    let _programme_name = args.next().unwrap();
+    if args.len() == 0 {
+        // No more args so serve an echo service over HTTPS, with
+        // proper error handling.
+        if let Err(e) = server::DataServer::run_server().await {
+            eprintln!("FAILED: {}", e);
+            std::process::exit(1);
+        }
+
+        std::process::exit(0);
+    }
+    // args.len() > 0
+    let s1 = args.next().unwrap();
+    const USAGE: &str = "Usage: adduser <username> <password>";
+    match s1.as_str() {
+        "delete_user" => {
+            let username = args.next().expect(USAGE);
+            match authorisation::delete_user(username.as_str()).await {
+                Ok(b) => {
+                    if b {
+                        println!("Deleted: {username}");
+                    } else {
+                        println!("Not found: {username}");
+                    }
                 }
-                None => None,
+                Err(err) => eprintln!("Failed to delete user {}: {}", username, err),
             };
-            let response_json = serde_json::to_string(&response).unwrap();
-
-            stream.write(response_json.as_bytes())
         }
-        Err(e) => Err(e),
-    }
-}
+        "add_user" => {
+            let username = args.next().expect(USAGE);
+            let password: String = args.fold(String::new(), |a, b| format!("{a} {b}"));
+            match authorisation::add_user(username.as_str(), password.as_str()).await {
+                Ok(b) => {
+                    if b {
+                        println!("Added: {username}");
+                    } else {
+                        println!("Already added: {username}");
+                    }
+                }
 
-/// Check that the passed user is a valid user and make a JWT whith
-/// their permissions
-fn process_login(request: LoginRequest) -> Option<Claims> {
-    let username = request.username;
-    let password = request.password;
-    authorise(username, password)
+                Err(err) => eprintln!("Adding user failed: {err}"),
+            };
+        }
+
+        "list_users" => {
+            match authorisation::users().await {
+                Ok(users) => {
+                    for u in users {
+                        println!("{u}");
+                    }
+                }
+
+                Err(err) => panic!("{}", err),
+            };
+        }
+        _ => panic!("{}", USAGE),
+    };
 }

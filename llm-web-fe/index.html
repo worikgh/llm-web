@@ -39,14 +39,13 @@
         // This gives you complete control over how the module is loaded
         // and compiled.
         //
-        // Also note that the promise, when resolved, yields the wasm module's
+        // Also note that the promise, when resolved, yields the wasm modules
         // exports which is the same as importing the `*_bg` module in other
         // modes
         await init();
 
         // And afterwards we can use all the functionality defined in wasm.
         const result = concat(1, 2);
-        console.log(`1 + 2 = ${result}`);
         if (result !== "Two numbers! 1 2")
           throw new Error("wasm addition doesn't work!");
       }

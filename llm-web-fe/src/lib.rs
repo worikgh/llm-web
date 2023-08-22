@@ -1,70 +1,56 @@
 #![allow(unused_variables)]
-use llm_web_common::Claims;
-use rand::prelude::*;
 use wasm_bindgen::prelude::*;
 mod chat_div;
 mod claims;
 mod cost_div;
 /// A frontend to Large Language Models (LLMs).  The backend is
 /// supplied by [`llm-rs`](https://crates.io/crates/llm-rs)
-mod interaction_div;
 mod login_div;
+mod make_request;
+mod manipulate_css;
 mod set_page;
+extern crate llm_rs;
 mod utility;
 use chat_div::chat_div;
 use login_div::authenticated;
 use login_div::login_div;
-use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use set_page::set_page;
+#[allow(unused_imports)]
 use utility::print_to_console;
-use web_sys::window;
+use web_sys::{window, HtmlLinkElement};
 
+#[allow(unused_imports)]
 use crate::utility::print_to_console_s;
 /// The main entry point.
+
+/// Main wasm entry point. Called when the wasm module is instantiated
+#[wasm_bindgen(start)]
+fn main() -> Result<(), JsValue> {
+    start_app()
+}
+
 fn start_app() -> Result<(), JsValue> {
-    print_to_console("start_app");
-
-    let mut rng = rand::thread_rng();
-    let bits = 2048;
-    let priv_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate a key");
-    let pub_key = RsaPublicKey::from(&priv_key);
-
-    // Encrypt
-    let data = b"hello world";
-    let enc_data = pub_key
-        .encrypt(&mut rng, Pkcs1v15Encrypt, &data[..])
-        .expect("failed to encrypt");
-    assert_ne!(&data[..], &enc_data[..]);
-
-    // Decrypt
-    let dec_data = priv_key
-        .decrypt(Pkcs1v15Encrypt, &enc_data)
-        .expect("failed to decrypt");
-    assert_eq!(&data[..], &dec_data[..]);
-
-    print_to_console_s(format!("start_app: {:?}", pub_key));
+    let rng = rand::thread_rng();
 
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
 
+    // Style
+    let link: HtmlLinkElement = document.create_element("link").unwrap().dyn_into().unwrap();
+    link.set_rel("stylesheet");
+    link.set_href("/style.css");
+    document.head().unwrap().append_child(&link).unwrap();
+
     let body = document.body().expect("Could not access document.body");
 
     if let Some(claims) = authenticated() {
-        set_page(chat_div, &claims)?;
+        set_page(chat_div)?;
     } else {
-        set_page(login_div, &Claims::new("".to_string(), 0))?;
+        set_page(login_div)?;
     }
 
     Ok(())
-}
-
-// Called when the wasm module is instantiated
-#[wasm_bindgen(start)]
-fn main() -> Result<(), JsValue> {
-    // Use `web_sys`'s global `window` function to get a handle on the global
-    // window object.
-    start_app()
 }
 
 #[wasm_bindgen]

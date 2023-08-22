@@ -12,31 +12,48 @@ crate-type = ["cdylib"]
 base64 = "0.21.2"
 chrono = { version = "0.4", features = ["wasmbind"] }
 getrandom = { version = "0.2", features = ["js"] }
+gloo-events = "0.2"
+gloo = {version="0.10.0", features=["events"]}
 gloo-storage = "0.2.2"
 hmac = "0.12.1"
 js-sys = "0.3"
 jwt = { git = "https://github.com/mikkyang/rust-jwt", branch = "master" }
+# llm-rs={path="../../llm-rs"}
 llm-web-common = {path = "../llm-web-common"}
 parking_lot = { version = "0.11.1", features = ["wasm-bindgen"]}
 rand = "0.8.5"
-rsa = "0.9.2"
+rsa = {version = "0.9", features = ["serde"]}
 serde  = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10.6"
+uuid = { version = "1.4.1", features = ["v4", "fast-rng", "macro-diagnostics", "serde", "js", "wasm-bindgen"]} #uuid = {version = "1.4.1", features = ["js", "wasm-bindgen"]}
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 
 [dependencies.web-sys]
 version = "0.3.4"
 features = [
   'Document',
   'Element',
+  'HtmlButtonElement',
   'HtmlDivElement',
   'HtmlElement',
   'HtmlInputElement',
+  'HtmlInputElement',
+  'HtmlLinkElement',
+  'HtmlSelectElement',
+  'HtmlStyleElement',
+  'HtmlOptionElement',
+  'HtmlOptionsCollection',
   'HtmlTextAreaElement',
-  'MouseEvent',
+  'MouseEvent',   
   'Node',
+  'Request',
+  'RequestInit',
+  'RequestMode',
+  'Response',
   'Text',
   'Window',
-  'console'
+  'XmlHttpRequest',
+  'console',
 ]
