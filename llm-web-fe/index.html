@@ -1,7 +1,6 @@
 <html>
   <head>
     <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
-    <link  rel="css" href="src/app.css"/>
   </head>
   <body>
     <!-- Note the usage of `type=module` here as this is an ES6 module -->
@@ -13,7 +12,7 @@
       // will "boot" the module and make it ready to use. Currently browsers
       // don't support natively imported WebAssembly as an ES module, but
       // eventually the manual initialization won't be required!
-      import init, { concat, add } from './pkg/llm_web_fe.js';
+      import init, { add } from './pkg/llm_web_fe.js';
 
       async function run() {
         // First up we need to actually load the wasm file, so we use the
@@ -21,7 +20,7 @@
         // server, and then we wait on the returned promise to wait for the
         // wasm to be loaded.
         //
-        // It may look like this: `await init('./pkg/llm-web-fe.wasm');`,
+        // It may look like this: `await init('./pkg/llm_web_fe_bg.wasm');`,
         // but there is also a handy default inside `init` function, which uses
         // `import.meta` to locate the wasm file relatively to js file.
         //
@@ -39,14 +38,15 @@
         // This gives you complete control over how the module is loaded
         // and compiled.
         //
-        // Also note that the promise, when resolved, yields the wasm modules
+        // Also note that the promise, when resolved, yields the wasm module's
         // exports which is the same as importing the `*_bg` module in other
         // modes
         await init();
 
         // And afterwards we can use all the functionality defined in wasm.
-        const result = concat(1, 2);
-        if (result !== "Two numbers! 1 2")
+        const result = add(1, 2);
+        console.log(`1 + 2 = ${result}`);
+        if (result !== 3)
           throw new Error("wasm addition doesn't work!");
       }
 

@@ -1,4 +1,4 @@
-use llm_rs;
+// use llm_rs;
 /// Structures to send back and forth between llm-web-fe and llm-web-be utilises
 //use rsa::RsaPublicKey;
 use serde::{Deserialize, Serialize};
@@ -69,11 +69,11 @@ pub struct ChatPrompt {
     pub token: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+// #[derive(Debug, Deserialize, Serialize)]
 // From llm-web-be -> llm-web-fe.  Response from LLM
-pub struct ChatResponse {
-    pub request_info: llm_rs::json::ChatRequestInfo,
-}
+// pub struct ChatResponse {
+//     pub request_info: llm_rs::json::ChatRequestInfo,
+// }
 // Display for CommType
 impl fmt::Display for CommType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -5,7 +5,7 @@
 // use uuid::Uuid;
 // use std::fmt;
 pub mod communication;
-extern crate llm_rs;
+//extern crate llm_rs;
 use serde::{Deserialize, Serialize};
 // use awasm_bindgen::prelude::*;
 // use wasm_bindgen::JsValue;

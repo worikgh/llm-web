@@ -1,8 +1,9 @@
 // use chrono::Utc;
 // use crate::chat_div::chat_div;
 // use crate::set_page::set_page;
-use crate::chat_div::chat_div;
-use crate::make_request::make_request;
+// use crate::chat_div::chat_div;
+// use crate::make_request::make_request;
+use crate::manipulate_css::add_css_rule;
 #[allow(unused_imports)]
 use crate::set_page::set_page;
 use crate::utility::print_to_console;
@@ -10,14 +11,14 @@ use crate::utility::print_to_console_s;
 #[allow(unused_imports)]
 use gloo::{events, timers};
 use gloo_events::EventListener;
-use gloo_storage::LocalStorage;
-use gloo_storage::Storage;
+// use gloo_storage::LocalStorage;
+// use gloo_storage::Storage;
 #[allow(unused_imports)]
 use js_sys::Function;
-use llm_web_common::communication::CommType;
-use llm_web_common::communication::LoginRequest;
-use llm_web_common::communication::LoginResponse;
-use llm_web_common::communication::Message;
+// use llm_web_common::communication::CommType;
+// use llm_web_common::communication::LoginRequest;
+// use llm_web_common::communication::LoginResponse;
+// use llm_web_common::communication::Message;
 use wasm_bindgen::prelude::*;
 #[allow(unused_imports)]
 use wasm_bindgen::JsCast;
@@ -64,7 +65,24 @@ pub fn login_div(document: &Document) -> Result<Element, JsValue> {
     grid_container.append_child(&login_main_div)?;
     main_div.append_child(&grid_container)?;
 
-    // Add an event listener to the button.
+    add_css_rule(document, "html, body", "height", "100%".to_string())?; // Add an event listener to the button.
+    add_css_rule(document, "html, body", "margin", "0".to_string())?; // Add an event listener to the button.
+    add_css_rule(document, "#login-div > input", "margin", "1em".to_string())?; // Add an event listener to the button.
+    add_css_rule(
+        document,
+        "#login-div",
+        "border",
+        "2px solid black".to_string(),
+    )?; // Add an event listener to the button.
+    add_css_rule(document, "#login-div", "width", "50%".to_string())?; // Add an event listener to the button.
+    add_css_rule(document, "#login-div", "display", "flex".to_string())?; // Add an event listener to the button.
+    add_css_rule(
+        document,
+        "#login-div",
+        "flex-direction",
+        "column".to_string(),
+    )?; // Add an event listener to the button.
+    add_css_rule(document, "#login-div", "padding", "10px".to_string())?; // Add an event listener to the button.
     let on_click = EventListener::new(&user_text_submit, "click", move |_event| {
         // Call whatever function you would like with the value of the
         // text input.
@@ -80,35 +98,35 @@ pub fn login_div(document: &Document) -> Result<Element, JsValue> {
         };
 
         print_to_console_s(format!("click! username: {username} {:?}", username_input));
-        let login_request = LoginRequest { username, password };
-        let login_message = Message::from(login_request);
-        let cb = |msg: Message| {
-            match msg.comm_type {
-                CommType::LoginResponse => {
-                    let lr: LoginResponse = serde_json::from_str(msg.object.as_str()).unwrap();
-                    if lr.success {
-                        // Store token
-                        let document = window()
-                            .and_then(|win| win.document())
-                            .expect("Failed to get document");
+        // let login_request = LoginRequest { username, password };
+        // let login_message = Message::from(login_request);
+        // let cb = |msg: Message| {
+        //     match msg.comm_type {
+        //         CommType::LoginResponse => {
+        //             let lr: LoginResponse = serde_json::from_str(msg.object.as_str()).unwrap();
+        //             if lr.success {
+        //                 // Store token
+        //                 let document = window()
+        //                     .and_then(|win| win.document())
+        //                     .expect("Failed to get document");
 
-                        let head = document.body().unwrap();
-                        head.set_attribute("data.token", lr.token.unwrap().as_str())
-                            .unwrap();
-                        set_page(chat_div).unwrap();
-                    } else {
-                        // print_to_console("For debugging always goto chat_div");
-                        // set_page(chat_div).unwrap();
-                        set_page(login_div).unwrap();
-                    }
-                }
-                _ => panic!("Expected LoginResponse got {}", msg),
-            };
-        };
-        match make_request(login_message, cb) {
-            Ok(()) => (),
-            Err(err) => panic!("{:?}", err),
-        };
+        //                 let head = document.body().unwrap();
+        //                 head.set_attribute("data.token", lr.token.unwrap().as_str())
+        //                     .unwrap();
+        //                 set_page(chat_div).unwrap();
+        //             } else {
+        //                 // print_to_console("For debugging always goto chat_div");
+        //                 // set_page(chat_div).unwrap();
+        //                 set_page(login_div).unwrap();
+        //             }
+        //         }
+        //         _ => panic!("Expected LoginResponse got {}", msg),
+        //     };
+        // };
+        // match make_request(login_message, cb) {
+        //     Ok(()) => (),
+        //     Err(err) => panic!("{:?}", err),
+        // };
     });
     on_click.forget();
     Ok(main_div)
@@ -116,14 +134,15 @@ pub fn login_div(document: &Document) -> Result<Element, JsValue> {
 
 /// If authenticated return the token.  Else return None
 pub fn authenticated() -> Option<String> {
-    let result: Option<String>;
-    match LocalStorage::get::<String>("token") {
-        Ok(t) => Some(t),
-        Err(err) => {
-            eprintln!("eror: {}", err);
-            None
-        }
-    }
+    // let result: Option<String>;
+    // match LocalStorage::get::<String>("token") {
+    //     Ok(t) => Some(t),
+    //     Err(err) => {
+    //         eprintln!("eror: {}", err);
+    //         None
+    //     }
+    // }
+    None
 }
 
 //#[wasm_bindgen]
