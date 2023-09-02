@@ -2,6 +2,7 @@
 use web_sys::{Document, Element};
 
 /// Display data about current spending by the user.
+#[allow(dead_code)]
 pub fn cost_div(document: &Document) -> Element {
     let cost_div = document
         .create_element("div")
