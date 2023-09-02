@@ -69,11 +69,11 @@ pub struct ChatPrompt {
     pub token: String,
 }
 
-// #[derive(Debug, Deserialize, Serialize)]
-// From llm-web-be -> llm-web-fe.  Response from LLM
-// pub struct ChatResponse {
-//     pub request_info: llm_rs::json::ChatRequestInfo,
-// }
+#[derive(Debug, Deserialize, Serialize)]
+/// From llm-web-be -> llm-web-fe.  Response from LLM
+pub struct ChatResponse {
+    pub request_info: String,
+}
 // Display for CommType
 impl fmt::Display for CommType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
