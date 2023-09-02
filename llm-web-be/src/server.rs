@@ -19,6 +19,8 @@ use hyper::body;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use hyper::{Body, Request, Response, StatusCode};
+use llm_web_common::communication::ChatPrompt;
+use llm_web_common::communication::ChatResponse;
 use llm_web_common::communication::InvalidRequest;
 use llm_web_common::communication::LoginResponse;
 use llm_web_common::communication::LogoutRequest;
@@ -29,6 +31,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
+use std::result;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 use std::{env, fs, io};
@@ -195,8 +198,8 @@ impl DataServer {
         }
     }
 
-    /// Log a user out
     /// All errors are transformed into Message.  TODO: Is this a good thing?
+    /// Log a user out
     async fn process_logout(&self, message: &Message) -> Message {
         match message.comm_type {
             CommType::LogoutRequest => {
@@ -224,8 +227,8 @@ impl DataServer {
             }),
         }
     }
+
     /// Log a user in, or not
-    /// All errors are transformed into Message.  TODO: Is this a good thing?
     async fn process_login(&self, message: &Message) -> Message {
         eprintln!("process_login(self, message: {message}) 1");
         match message.comm_type {
@@ -272,7 +275,29 @@ impl DataServer {
             }
         }
     }
-    // Dispatch the request to subroutines
+
+    /// Process a chat request
+    async fn process_chat_request(&self, message: &Message) -> Message {
+        let response: String = if message.comm_type != CommType::ChatPrompt {
+            format!("Invalid message tupe sent to `chat`: {}", message.comm_type)
+        } else {
+            // Forced unwrap OK because comm_type is ChatPrompt
+            let prompt: ChatPrompt = serde_json::from_str(&message.object).unwrap();
+            format!(
+                "Got chat prompt.  Umimplemented.  {} {}",
+                prompt.model, prompt.prompt
+            )
+        };
+        let result = ChatResponse {
+            request_info: serde_json::to_string(&response).unwrap(),
+        };
+
+        Message {
+            comm_type: CommType::ChatResponse,
+            object: serde_json::to_string(&result).unwrap(),
+        }
+    }
+    /// Dispatch the request to subroutines
     async fn process_request(&self, req: Request<Body>) -> Result<Response<Body>, ServerError> {
         let mut response = Response::new(Body::empty());
         // response
@@ -296,6 +321,18 @@ impl DataServer {
                 };
 
                 let return_message = self.process_login(&message).await;
+                let s = serde_json::to_string(&return_message).unwrap();
+
+                *response.body_mut() = Body::from(s);
+            }
+            (_, "/api/chat") => {
+                let str = Self::body_to_string(req.into_body()).await.unwrap();
+                let message: Message = match serde_json::from_str(&str) {
+                    Ok(s) => s,
+                    Err(err) => return Err(ServerError::from(err)),
+                };
+
+                let return_message = self.process_chat_request(&message).await;
                 let s = serde_json::to_string(&return_message).unwrap();
 
                 *response.body_mut() = Body::from(s);
