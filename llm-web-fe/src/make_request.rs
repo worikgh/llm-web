@@ -1,6 +1,6 @@
 /// Make a XmlHttpRequest to the backend.  
 use crate::utility::print_to_console_s;
-use llm_web_common::communication::Message;
+use llm_web_common::communication::{CommType, Message};
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
@@ -8,9 +8,18 @@ use web_sys::XmlHttpRequest;
 /// `message` is the data to send to back end
 /// `f` is the function to call with the response.  It will call `set_page`
 pub fn make_request(message: Message, mut f: impl FnMut(Message) + 'static) -> Result<(), JsValue> {
+    let api = match message.comm_type {
+        CommType::LoginRequest => "login",
+        CommType::ChatPrompt => "chat",
+        _ => {
+            print_to_console_s(format!("make_request Unimplemented: {message}"));
+            panic!("Unimplemented")
+        }
+    };
+    let uri = format!("/api/{api}");
     let xhr = XmlHttpRequest::new().unwrap();
     print_to_console_s(format!("make_request({message}). 1"));
-    xhr.open_with_async("POST", "/api/login", true)?;
+    xhr.open_with_async("POST", uri.as_str(), true)?;
     xhr.set_request_header("Content-Type", "application/json")?;
 
     let xhr = Rc::new(RefCell::new(xhr));
