@@ -3,19 +3,11 @@
 //! hyper will automatically use HTTP/2 if a client starts talking HTTP/2,
 //! otherwise HTTP/1.1 will be used.
 
-//#![cfg(feature = "acceptor")]
-
-// use llm_web_common::communication::LoginRequest;
 use crate::authorisation::login;
 use crate::authorisation::LoginResult;
 use crate::session::Session;
 use chrono::Utc;
-// use futures::{future, FutureExt, TryStreamExt};
 use hyper::body;
-// use hyper::header::{
-//     HeaderValue, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
-//     ACCESS_CONTROL_ALLOW_ORIGIN,
-// };
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use hyper::{Body, Request, Response, StatusCode};
@@ -31,7 +23,6 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
-use std::result;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 use std::{env, fs, io};
@@ -39,33 +30,33 @@ use uuid::Uuid;
 #[derive(Debug)]
 /// Combine errors
 enum ServerError {
-    SerdeError(serde_json::Error),
-    HyperError(hyper::Error),
-    HyperHttpError(hyper::http::Error),
+    Serde(serde_json::Error),
+    Hyper(hyper::Error),
+    HyperHttp(hyper::http::Error),
 }
 impl From<serde_json::Error> for ServerError {
     fn from(err: serde_json::Error) -> ServerError {
-        ServerError::SerdeError(err)
+        ServerError::Serde(err)
     }
 }
 
 impl From<hyper::Error> for ServerError {
     fn from(err: hyper::Error) -> ServerError {
-        ServerError::HyperError(err)
+        ServerError::Hyper(err)
     }
 }
 impl From<hyper::http::Error> for ServerError {
     fn from(err: hyper::http::Error) -> ServerError {
-        ServerError::HyperHttpError(err)
+        ServerError::HyperHttp(err)
     }
 }
 
 impl fmt::Display for ServerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ServerError::SerdeError(ref e) => e.fmt(f),
-            ServerError::HyperError(ref e) => e.fmt(f),
-            ServerError::HyperHttpError(ref e) => e.fmt(f),
+            ServerError::Serde(ref e) => e.fmt(f),
+            ServerError::Hyper(ref e) => e.fmt(f),
+            ServerError::HyperHttp(ref e) => e.fmt(f),
         }
     }
 }
@@ -73,9 +64,9 @@ impl fmt::Display for ServerError {
 impl Error for ServerError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
-            ServerError::SerdeError(ref e) => Some(e),
-            ServerError::HyperError(ref e) => Some(e),
-            ServerError::HyperHttpError(ref e) => Some(e),
+            ServerError::Serde(ref e) => Some(e),
+            ServerError::Hyper(ref e) => Some(e),
+            ServerError::HyperHttp(ref e) => Some(e),
         }
     }
 }
@@ -152,26 +143,6 @@ impl DataServer {
         // server.await?;
         // Ok(())
     }
-    // #[allow(dead_code)]
-    // type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-    // fn _get_body_as_vec<'a>(
-    //     b: body::Body,
-    // ) -> future::BoxFuture<'a, Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>>> {
-    //     let f = b
-    //         .try_fold(vec![], |mut vec, bytes| {
-    //             vec.extend_from_slice(&bytes);
-    //             future::ok(vec)
-    //         })
-    //         .map(|x| {
-    //             Ok(std::str::from_utf8(&x?)?
-    //                 .lines()
-    //                 .map(ToString::to_string)
-    //                 .collect())
-    //         });
-
-    //     Box::pin(f)
-    // }
 
     /// Helper function
     async fn body_to_string(
@@ -300,18 +271,6 @@ impl DataServer {
     /// Dispatch the request to subroutines
     async fn process_request(&self, req: Request<Body>) -> Result<Response<Body>, ServerError> {
         let mut response = Response::new(Body::empty());
-        // response
-        //     .headers_mut()
-        //     .insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
-        // response.headers_mut().insert(
-        //     ACCESS_CONTROL_ALLOW_HEADERS,
-        //     HeaderValue::from_static("Content-Type"),
-        // );
-        // response.headers_mut().insert(
-        //     ACCESS_CONTROL_ALLOW_METHODS,
-        //     HeaderValue::from_static("GET, POST"),
-        // );
-        // eprintln!("process_request 2: {}", req.uri().path());
         match (req.method(), req.uri().path()) {
             (_, "/api/login") => {
                 let str = Self::body_to_string(req.into_body()).await.unwrap();
@@ -393,7 +352,6 @@ mod tests {
     use crate::authorisation::delete_user;
     use crate::authorisation::tests::get_unique_user;
     use authorisation::add_user;
-    //use authorisation::users;
     use llm_web_common::communication::LoginRequest;
     use llm_web_common::communication::Message;
 
