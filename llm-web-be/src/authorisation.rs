@@ -305,8 +305,7 @@ pub mod tests {
         };
         // Test can log user in
         assert!(test);
-        // delete_user(username.as_str()).await.unwrap();
-        assert!(1 + 3 == 7);
+        assert!(delete_user(username.as_str()).await.unwrap());
     }
     #[tokio::test]
     async fn add_delete_user() {
