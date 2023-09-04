@@ -4,10 +4,8 @@ version = "0.1.1"
 edition = "2021"
 authors = ["Worik Stanton root@worik.org"]
 description = "A library, with a command line interface, to exploit Large Language Models"
-repository = "https://github.com/worikgh/llm-rs/"
+repository = "https://github.com/worikgh/llm/llm-rs/"
 license = "GPL-3.0-only"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clap = { version = "4.0.32", features = ["derive"] }
@@ -27,8 +25,6 @@ rand = "0.8.5"
 directories = "5.0.1"
 chrono = "0.4.24"
 regex = "1.8.1"
-
-
 
 [[bin]]
 name = "cli"

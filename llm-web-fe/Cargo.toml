@@ -42,32 +42,3 @@ features = [
 'XmlHttpRequest',
 ]
 
-# See more keys and their definitions at
-# https://doc.rust-lang.org/cargo/reference/manifest.html
-
-# [dependencies.web-sys]
-# version = "0.3.4"
-# features = [
-#   'Document',
-#   'Element',
-#   'HtmlButtonElement',
-#   'HtmlDivElement',
-#   'HtmlElement',
-#   'HtmlInputElement',
-#   'HtmlLinkElement',
-#   'HtmlSelectElement',
-#   'HtmlStyleElement',
-#   'HtmlOptionElement',
-#   'HtmlOptionsCollection',
-#   'HtmlTextAreaElement',
-#   'MouseEvent',   
-#   'Node',
-#   'Request',
-#   'RequestInit',
-#   'RequestMode',
-#   'Response',
-#   'Text',
-#   'Window',
-#   'XmlHttpRequest',
-#   'console',
-# ]

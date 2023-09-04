@@ -22,7 +22,7 @@ futures-util = "0.3.28"
 hex = "0.4.3"
 hyper = {version="0.14", features=["full"]}
 hyper-rustls = "0.24.1"
-llm-rs={path="../../llm-rs"}
+llm-rs={path="../llm-rs"}
 llm-web-common = {path = "../llm-web-common"}
 log = "0.4.19"
 rand = "0.8.5"
