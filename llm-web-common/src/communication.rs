@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 //use uuid::serde;
 use uuid::Uuid;
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 /// The communication between the front end and the back end uses
 /// `Message` struct.  `CommType` categorises the communication and
 /// defines what object is being relayed in the `Message.object` type
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum CommType {
     LoginRequest,
     LoginResponse,
@@ -56,14 +56,35 @@ pub struct LogoutResponse {
     pub success: bool, // Will only fail if not logged in (FLW)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-// From llm-web-fe -> llm-web-be.  A prompt for a chat session
+// From llm-web-fe -> llm-web-be.  A prompt for a chat session.  Sent
+// from front end to server.
+// The message sent to OpenAI looks like:
+//   -d '{
+//      "model": "gpt-3.5-turbo",
+//      "messages": [{"role": "user", "content": "Say this is a test!"}],
+//      "temperature": 0.7
+//    }'
+/// Each mesage has a type
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub enum LLMMessageType {
+    System,    // First message:  What attitude the LLM should take
+    User,      // Directed to the LLM
+    Assistant, // Response from the LLM
+}
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct LLMMessage {
+    pub message_type: LLMMessageType,
+    pub body: String,
+}
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct ChatPrompt {
     /// The model to use    
     pub model: String,
 
-    // The prompt being sent
-    pub prompt: String,
+    // The
+    pub messages: Vec<LLMMessage>,
+
+    pub temperature: f64,
 
     // The user's authenticating data
     pub token: String,
@@ -74,6 +95,7 @@ pub struct ChatPrompt {
 pub struct ChatResponse {
     pub request_info: String,
 }
+
 // Display for CommType
 impl fmt::Display for CommType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

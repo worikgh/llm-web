@@ -11,14 +11,18 @@ use hyper::body;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use hyper::{Body, Request, Response, StatusCode};
+use llm_rs::json::ChatRequestInfo;
+use llm_rs::openai_interface;
 use llm_web_common::communication::ChatPrompt;
 use llm_web_common::communication::ChatResponse;
 use llm_web_common::communication::InvalidRequest;
+use llm_web_common::communication::LLMMessage;
 use llm_web_common::communication::LoginResponse;
 use llm_web_common::communication::LogoutRequest;
 use llm_web_common::communication::LogoutResponse;
 use llm_web_common::communication::Message;
 use llm_web_common::communication::{CommType, LoginRequest};
+use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
@@ -249,15 +253,53 @@ impl DataServer {
 
     /// Process a chat request
     async fn process_chat_request(&self, message: &Message) -> Message {
+        eprintln!("process_chat_request 1");
         let response: String = if message.comm_type != CommType::ChatPrompt {
             format!("Invalid message tupe sent to `chat`: {}", message.comm_type)
         } else {
+            eprintln!(
+                "process_chat_request 1.5: {}. {:?}",
+                message.comm_type, message.object
+            );
             // Forced unwrap OK because comm_type is ChatPrompt
-            let prompt: ChatPrompt = serde_json::from_str(&message.object).unwrap();
-            format!(
-                "Got chat prompt.  Umimplemented.  {} {}",
-                prompt.model, prompt.prompt
-            )
+            let prompt: ChatPrompt =
+                serde_json::from_str(&message.object).expect("Should be a ChatPrompt");
+            let api_key = env::var("OPENAI_API_KEY").unwrap();
+            // Put the conversation so far in here
+            // = [Message { role, content }]
+            let messages: Vec<LLMMessage> = prompt.messages;
+
+            let data = json!({
+            "messages": messages,
+            "model": prompt.model.as_str(),
+            "temperature": prompt.temperature,
+                });
+
+            eprintln!("process_chat_request 2");
+            // Calling `openai_interface::ApiInterface::send_chat` a
+            // synchronous function that blocks from an async
+            // function.  This compiles.
+            let chat_response: (HashMap<String, String>, ChatRequestInfo) =
+                match openai_interface::ApiInterface::send_chat(api_key.as_str(), &data) {
+                    Ok(response) => response,
+                    Err(err) => {
+                        let chat_response = InvalidRequest {
+                            reason: format!("Failed `send_chat`.  Error: {err}"),
+                        };
+                        return Message {
+                            comm_type: CommType::InvalidRequest,
+                            object: serde_json::to_string(&chat_response).unwrap(),
+                        };
+                    }
+                };
+            eprintln!("process_chat_request 3");
+            let mut result = "".to_string();
+            result = format!("{result}Headers\n");
+            for (k, v) in chat_response.0.iter() {
+                result = format!("{result}{k} => {v}\n");
+            }
+            eprintln!("process_chat_request 4");
+            format!("{result} ChatRequstInfo:? {:?}", chat_response.1)
         };
         let result = ChatResponse {
             request_info: serde_json::to_string(&response).unwrap(),

@@ -8,6 +8,9 @@ use crate::utility::print_to_console_s;
 use llm_web_common::communication::ChatPrompt;
 use llm_web_common::communication::ChatResponse;
 use llm_web_common::communication::CommType;
+use llm_web_common::communication::InvalidRequest;
+use llm_web_common::communication::LLMMessage;
+use llm_web_common::communication::LLMMessageType;
 use llm_web_common::communication::Message;
 use wasm_bindgen::prelude::*;
 use web_sys::{
@@ -17,15 +20,19 @@ use web_sys::{
 
 /// The callback for `make_request`
 fn chat_request(message: Message) {
+    print_to_console_s(format!("chat_request 1 {}", message.comm_type));
     match message.comm_type {
         CommType::ChatResponse => {
+            print_to_console("chat_request 1.1");
             let chat_response: ChatResponse =
                 serde_json::from_str(message.object.as_str()).unwrap();
+            print_to_console("chat_request 1.2");
             let message = chat_response.request_info;
             // Get response area
             let document = window()
                 .and_then(|win| win.document())
                 .expect("Failed to get document");
+            print_to_console("chat_request 2");
             let result_div = document.get_element_by_id("response-div").unwrap();
             result_div.set_inner_html(&message);
             // pub struct ChatRequestInfo {
@@ -38,6 +45,17 @@ fn chat_request(message: Message) {
             // let usage = chat_response.request_info.usage;
             // let choices = chat_response.request_info.choices;
             // let choice = choices.first();
+        }
+        CommType::InvalidRequest => {
+            print_to_console_s(format!("{:?}", message));
+            let inr: InvalidRequest =
+                serde_json::from_str(message.object.as_str()).expect("Not an InvalidRequest");
+            let document = window()
+                .and_then(|win| win.document())
+                .expect("Failed to get document");
+            print_to_console("chat_request ivr 1");
+            let result_div = document.get_element_by_id("response-div").unwrap();
+            result_div.set_inner_html(&inr.reason);
         }
         _ => (),
     };
@@ -78,10 +96,20 @@ fn chat_submit() {
     } else {
         todo!("Set status concerning error: No data token");
     }
-
+    // As a start sending one message and not building a conversation
+    let message_role = LLMMessage {
+        message_type: LLMMessageType::System,
+        body: "You are a helpful assistant".to_string(),
+    };
+    let message_body = LLMMessage {
+        message_type: LLMMessageType::User,
+        body: prompt,
+    };
+    let messages = vec![message_role, message_body];
     let chat_prompt = ChatPrompt {
         model,
-        prompt,
+        messages,
+        temperature: 1.0, // Todo: Get this from user interface
         token,
     };
 
