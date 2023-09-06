@@ -66,6 +66,7 @@ pub struct LogoutResponse {
 //    }'
 /// Each mesage has a type
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum LLMMessageType {
     System,    // First message:  What attitude the LLM should take
     User,      // Directed to the LLM
