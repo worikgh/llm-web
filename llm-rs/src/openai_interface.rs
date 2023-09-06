@@ -492,12 +492,13 @@ impl ApiInterface {
         data: &serde_json::Value,
     ) -> Result<(HashMap<String, String>, ChatRequestInfo), Box<dyn Error>> {
         // Send the request and get the Json data as a String, convert
-        // into ``ChatRequestInfo`
-
-        // endpoint
+        // into ``ChatRequestInfo` endpoint
         let uri = format!("{}/chat/completions", API_URL);
+        eprintln!("Sending {uri}");
         let (headers, response_string) = Self::send_curl(api_key, data, uri.as_str())?;
+        eprintln!("Got back {uri}: {}", response_string.as_str());
         let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
+        eprintln!("Response from: {uri} {json:?}");
         Ok((headers, json))
     }
 

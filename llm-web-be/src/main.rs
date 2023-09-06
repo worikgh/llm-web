@@ -73,6 +73,6 @@ async fn main() {
                 Err(err) => panic!("{}", err),
             };
         }
-        _ => panic!("{}", USAGE),
+        _ => panic!("{}\nNot: '{}'", USAGE, s1),
     };
 }
