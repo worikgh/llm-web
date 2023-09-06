@@ -180,6 +180,7 @@ impl ApiInterface {
             Ok(ApiResult::new(content, headers))
         }
     }
+
     /// Delete a file
     pub fn files_delete(&self, file_id: String) -> Result<ApiResult<()>, Box<dyn Error>> {
         // DELETE https://api.openai.com/v1/files/{file_id}
@@ -215,6 +216,7 @@ impl ApiInterface {
             }
         }
     }
+
     /// Get a list of all files stored on OpenAI
     pub fn files_list(&self) -> Result<ApiResult<Vec<(String, String)>>, Box<dyn Error>> {
         // GET https://api.openai.com/v1/files
@@ -296,6 +298,7 @@ impl ApiInterface {
 
         Ok(ApiResult::new(response_text, headers))
     }
+
     /// The audio file `audio_file` is tracscribed.  No `Usage` data
     /// returned from this endpoint
     /// Get an audio transcription
@@ -353,6 +356,7 @@ impl ApiInterface {
 
         Ok(ApiResult::new(response_text, headers))
     }
+
     pub fn fine_tune_retrieve(&self, id: &str) -> Result<ApiResult<String>, Box<dyn Error>> {
         let uri = format!("{API_URL}/fine-tunes/{id}");
         let response = self
@@ -377,6 +381,7 @@ impl ApiInterface {
 
         Ok(ApiResult { headers, body })
     }
+
     pub fn fine_tune_create(
         &self,
         training_file_id: String,
@@ -404,6 +409,7 @@ impl ApiInterface {
             body: format!("Fine Tune: {fine_tune}"),
         })
     }
+
     pub fn fine_tune_list(&self) -> Result<ApiResult<String>, Box<dyn Error>> {
         let uri = format!("{API_URL}/fine-tunes");
 
@@ -494,6 +500,7 @@ impl ApiInterface {
         let json: ChatRequestInfo = serde_json::from_str(response_string.as_str())?;
         Ok((headers, json))
     }
+
     /// Read the record of the conversation
     pub fn get_context(&self) -> Result<Context, Box<dyn Error>> {
         Ok(self.context.clone())
@@ -744,6 +751,7 @@ impl ApiInterface {
             panic!("{model}");
         }
     }
+
     fn usage_headers(usage: Usage) -> HashMap<String, String> {
         let prompt_tokens = usage.prompt_tokens.to_string();
         let completion_tokens = usage.completion_tokens.to_string();
