@@ -254,9 +254,16 @@ impl DataServer {
     /// Process a chat request
     async fn process_chat_request(&self, message: &Message) -> Message {
         eprintln!("process_chat_request 1");
-        let response: String = if message.comm_type != CommType::ChatPrompt {
-            format!("Invalid message tupe sent to `chat`: {}", message.comm_type)
-        } else {
+        if message.comm_type != CommType::ChatPrompt {
+            let chat_response = InvalidRequest {
+                reason: format!("Invalid message tupe sent to `chat`: {}", message.comm_type),
+            };
+            return Message {
+                comm_type: CommType::InvalidRequest,
+                object: serde_json::to_string(&chat_response).unwrap(),
+            };
+        }
+        let response: ChatResponse = {
             eprintln!(
                 "process_chat_request 1.5: {}. {:?}",
                 message.comm_type, message.object
@@ -299,17 +306,26 @@ impl DataServer {
                 result = format!("{result}{k} => {v}\n");
             }
             eprintln!("process_chat_request 4");
-            format!("{result} ChatRequstInfo:? {:?}", chat_response.1)
-        };
-        let result = ChatResponse {
-            request_info: serde_json::to_string(&response).unwrap(),
+
+            let mut tokens: Vec<(String, u32)> = Vec::new();
+            tokens.push((
+                "prompt_tokens".to_string(),
+                chat_response.1.usage.prompt_tokens,
+            ));
+            tokens.push((
+                "completion_tokens".to_string(),
+                chat_response.1.usage.completion_tokens,
+            ));
+            let response = chat_response.1.choices[0].message.content.clone();
+            ChatResponse { tokens, response }
         };
 
         Message {
             comm_type: CommType::ChatResponse,
-            object: serde_json::to_string(&result).unwrap(),
+            object: serde_json::to_string(&response).unwrap(),
         }
     }
+
     /// Dispatch the request to subroutines
     async fn process_request(&self, req: Request<Body>) -> Result<Response<Body>, ServerError> {
         let mut response = Response::new(Body::empty());

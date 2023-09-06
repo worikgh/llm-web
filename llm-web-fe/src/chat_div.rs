@@ -27,7 +27,7 @@ fn chat_request(message: Message) {
             let chat_response: ChatResponse =
                 serde_json::from_str(message.object.as_str()).unwrap();
             print_to_console("chat_request 1.2");
-            let message = chat_response.request_info;
+            let message = chat_response.response;
             // Get response area
             let document = window()
                 .and_then(|win| win.document())
@@ -98,12 +98,12 @@ fn chat_submit() {
     }
     // As a start sending one message and not building a conversation
     let message_role = LLMMessage {
-        message_type: LLMMessageType::System,
-        body: "You are a helpful assistant".to_string(),
+        role: LLMMessageType::System,
+        content: "You are a helpful assistant".to_string(),
     };
     let message_body = LLMMessage {
-        message_type: LLMMessageType::User,
-        body: prompt,
+        role: LLMMessageType::User,
+        content: prompt,
     };
     let messages = vec![message_role, message_body];
     let chat_prompt = ChatPrompt {

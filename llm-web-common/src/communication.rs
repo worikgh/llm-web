@@ -73,8 +73,8 @@ pub enum LLMMessageType {
 }
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct LLMMessage {
-    pub message_type: LLMMessageType,
-    pub body: String,
+    pub role: LLMMessageType,
+    pub content: String,
 }
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct ChatPrompt {
@@ -92,8 +92,22 @@ pub struct ChatPrompt {
 
 #[derive(Debug, Deserialize, Serialize)]
 /// From llm-web-be -> llm-web-fe.  Response from LLM
+/// Has to send back all the information the front end needs
 pub struct ChatResponse {
-    pub request_info: String,
+    // `tokens`: OpenAI reports on two sorts of token use, one for the
+    // prompt and one for the response. [Documented
+    // here](https://platform.openai.com/docs/api-reference/making-requests).
+    // As this is generalised to other suppliers of LLMs they will
+    // have their own token schemes.  Hopefully the tokens can be
+    // described by a name and an unsigned int.
+    pub tokens: Vec<(String, u32)>,
+    // The response: OpenAI can return an array of responses,
+    // essentially offering many opinions.  This is controlled with a
+    // parameter in the request.  Here, for now, only one will be
+    // requested by the front end.  OpenAI returns a "role" and
+    // "content".  The "role" is always 'assistant' (test this!).  SO
+    // just pass back one string for the response
+    pub response: String,
 }
 
 // Display for CommType
