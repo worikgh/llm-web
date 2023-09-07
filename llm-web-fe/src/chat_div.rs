@@ -73,7 +73,7 @@ fn chat_request(message: Message) {
 
 /// The callback for the submit button to send a prompt to the model
 fn chat_submit() {
-    print_to_console("Submit clicked 1");
+    print_to_console("chat_submit 1");
     // Get the contents of the prompt
     let document = window()
         .and_then(|win| win.document())
@@ -85,7 +85,7 @@ fn chat_submit() {
         .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
         .unwrap();
     let prompt = prompt_input.value();
-
+    prompt_input.set_value("");
     let model_selection: HtmlSelectElement = document
         .get_element_by_id("model-chat")
         .unwrap()
@@ -124,7 +124,7 @@ fn chat_submit() {
     };
 
     let message: Message = Message::from(chat_prompt);
-    print_to_console("chat_div submit: calling make_request");
+    print_to_console("chat_submit 2 submit: calling make_request");
     make_request(message, chat_request).unwrap();
 }
 
