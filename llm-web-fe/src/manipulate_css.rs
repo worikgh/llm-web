@@ -33,11 +33,11 @@ pub struct CssRules {
 impl fmt::Display for CssRules {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (selector, rules) in &self.selector_rules {
-            write!(f, "{} {{\n", selector)?;
+            writeln!(f, "{} {{", selector)?;
             for (property, value) in rules {
-                write!(f, "  {}: {};\n", property, value)?;
+                writeln!(f, "  {}: {};", property, value)?;
             }
-            write!(f, "}}\n")?;
+            writeln!(f, "}}")?;
         }
         Ok(())
     }
