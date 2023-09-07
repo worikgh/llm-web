@@ -23,7 +23,8 @@ use web_sys::{
 fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
     print_to_console("chat_request 1");
     let mut chat_state = ChatState::restore()?;
-    chat_state.responses.push(chat_response);
+    let prompt = chat_state.prompt.clone().unwrap();
+    chat_state.responses.push((prompt, chat_response));
 
     // Save the response
     // Get response area
@@ -85,6 +86,12 @@ fn chat_submit() {
         .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
         .unwrap();
     let prompt = prompt_input.value();
+
+    // Store the prompt
+    let mut chat_state = ChatState::restore().unwrap();
+    chat_state.prompt = Some(prompt.clone());
+    chat_state.store().unwrap();
+
     prompt_input.set_value("");
     let model_selection: HtmlSelectElement = document
         .get_element_by_id("model-chat")
@@ -131,7 +138,10 @@ fn chat_submit() {
 /// Maintain the state of the chat dialogue
 #[derive(Debug, Deserialize, Serialize)]
 struct ChatState {
-    responses: Vec<ChatResponse>,
+    // When a prompt is sent store it `prompt`.  When the response
+    // is received store the response and prompt together
+    responses: Vec<(String, ChatResponse)>,
+    prompt: Option<String>,
 }
 
 impl ChatState {
@@ -166,6 +176,7 @@ impl ChatState {
         }
         Ok(Self {
             responses: Vec::new(),
+            prompt: None,
         })
     }
 
@@ -173,7 +184,7 @@ impl ChatState {
     fn get_response_display(&self) -> String {
         let mut result = String::new();
         for i in self.responses.iter() {
-            result = format!("{result}<br/>{}", i.response);
+            result = format!("{result}<br/>&gt; {}<br/>&lt; {}", i.0, i.1.response);
         }
         result
     }
