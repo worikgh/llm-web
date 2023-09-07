@@ -51,6 +51,7 @@ pub struct LogoutRequest {
     pub uuid: Uuid,
     pub token: String,
 }
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LogoutResponse {
     pub success: bool, // Will only fail if not logged in (FLW)
@@ -72,11 +73,13 @@ pub enum LLMMessageType {
     User,      // Directed to the LLM
     Assistant, // Response from the LLM
 }
+
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct LLMMessage {
     pub role: LLMMessageType,
     pub content: String,
 }
+
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct ChatPrompt {
     /// The model to use    
