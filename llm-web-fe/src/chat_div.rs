@@ -4,6 +4,7 @@ use crate::set_page::set_focus_on_element;
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
+use serde::{Deserialize, Serialize};
 // use llm_rs;
 use llm_web_common::communication::ChatPrompt;
 use llm_web_common::communication::ChatResponse;
@@ -118,14 +119,52 @@ fn chat_submit() {
     make_request(message, chat_request).unwrap();
 }
 
+/// Maintain the state of the chat dialogue
+#[derive(Debug, Deserialize, Serialize)]
+struct ChatState {}
+
+impl ChatState {
+    /// Store in <data-chat-state> node
+    fn store(&self) -> Result<(), JsValue> {
+        let self_str = serde_json::to_string(self)
+            .map_err(|err| wasm_bindgen::JsValue::from_str(&err.to_string()))?;
+        let document = window()
+            .and_then(|win| win.document())
+            .expect("Failed to get document");
+        document
+            .get_element_by_id("chat-div")
+            .unwrap()
+            .set_attribute("data-chat-div", self_str.as_str())?;
+        Ok(())
+    }
+    /// Read a ChatState from <data-chat-state> node
+    fn restore() -> Result<Self, JsValue> {
+        let document = window()
+            .and_then(|win| win.document())
+            .expect("Failed to get document");
+        let self_str = document
+            .get_element_by_id("chat-div")
+            .unwrap()
+            .get_attribute("data-chat-div")
+            .unwrap();
+        serde_json::from_str(self_str.as_str())
+            .map_err(|err| wasm_bindgen::JsValue::from_str(&err.to_string()))
+    }
+}
+
 /// Screen fo the `chat` model interface
 pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
+    // Manage state
+    let mut chat_state: ChatState = ChatState::restore()?;
+
     // The container DIV that arranges the page
     print_to_console("chat_div");
-    let grid_container = document
+    let chat_div = document
         .create_element("div")
         .expect("Could not create DIV element");
-    grid_container.set_class_name("grid-container");
+
+    chat_div.set_id("chat-div");
+    chat_div.set_class_name("grid-container");
 
     // The response from LLM
     let response_div = document
@@ -188,9 +227,9 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     side_panel_div.append_child(&select_element)?;
 
     // Put the page together
-    grid_container.append_child(&response_div).unwrap();
-    grid_container.append_child(&prompt_div).unwrap();
-    grid_container.append_child(&side_panel_div).unwrap();
+    chat_div.append_child(&response_div).unwrap();
+    chat_div.append_child(&prompt_div).unwrap();
+    chat_div.append_child(&side_panel_div).unwrap();
 
     // Prepare variables to control page layout
 
@@ -333,6 +372,6 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     );
 
     set_focus_on_element(document, "prompt-input");
-
-    Ok(grid_container)
+    chat_state.store()?;
+    Ok(chat_div)
 }
