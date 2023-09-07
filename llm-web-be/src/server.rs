@@ -251,7 +251,7 @@ impl DataServer {
         }
     }
 
-    /// Process a chat request
+    /// Process a chat request from the front end
     async fn process_chat_request(&self, message: &Message) -> Message {
         eprintln!("process_chat_request 1");
         if message.comm_type != CommType::ChatPrompt {
