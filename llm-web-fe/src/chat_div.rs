@@ -19,6 +19,24 @@ use web_sys::{
     HtmlSelectElement,
 };
 
+/// A prompt has returned from the LLM.  Process it here
+fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
+    print_to_console("chat_request 1");
+    let mut chat_state = ChatState::restore()?;
+    chat_state.responses.push(chat_response);
+
+    // Save the response
+    // Get response area
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let result_div = document.get_element_by_id("response-div").unwrap();
+    result_div.set_inner_html(chat_state.get_response_display().as_str());
+    chat_state.store()?;
+    print_to_console("chat_request 2");
+    Ok(())
+}
+
 /// The callback for `make_request`
 fn chat_request(message: Message) {
     print_to_console_s(format!("chat_request 1 {}", message.comm_type));
@@ -27,15 +45,7 @@ fn chat_request(message: Message) {
             print_to_console("chat_request 1.1");
             let chat_response: ChatResponse =
                 serde_json::from_str(message.object.as_str()).unwrap();
-            print_to_console("chat_request 1.2");
-            let message = chat_response.response;
-            // Get response area
-            let document = window()
-                .and_then(|win| win.document())
-                .expect("Failed to get document");
-            print_to_console("chat_request 2");
-            let result_div = document.get_element_by_id("response-div").unwrap();
-            result_div.set_inner_html(&message);
+            process_chat_response(chat_response).unwrap();
             // pub struct ChatRequestInfo {
             // :
             // 	pub model: String,
@@ -48,7 +58,6 @@ fn chat_request(message: Message) {
             // let choice = choices.first();
         }
         CommType::InvalidRequest => {
-            print_to_console_s(format!("{:?}", message));
             let inr: InvalidRequest =
                 serde_json::from_str(message.object.as_str()).expect("Not an InvalidRequest");
             let document = window()
@@ -121,44 +130,62 @@ fn chat_submit() {
 
 /// Maintain the state of the chat dialogue
 #[derive(Debug, Deserialize, Serialize)]
-struct ChatState {}
+struct ChatState {
+    responses: Vec<ChatResponse>,
+}
 
 impl ChatState {
     /// Store in <data-chat-state> node
     fn store(&self) -> Result<(), JsValue> {
+        print_to_console("ChatState::store 1");
         let self_str = serde_json::to_string(self)
             .map_err(|err| wasm_bindgen::JsValue::from_str(&err.to_string()))?;
         let document = window()
             .and_then(|win| win.document())
             .expect("Failed to get document");
         document
-            .get_element_by_id("chat-div")
+            .get_element_by_id("main_body")
             .unwrap()
             .set_attribute("data-chat-div", self_str.as_str())?;
+        print_to_console("ChatState::store 1");
         Ok(())
     }
+
     /// Read a ChatState from <data-chat-state> node
     fn restore() -> Result<Self, JsValue> {
+        print_to_console("ChatStatus::restore 1");
         let document = window()
             .and_then(|win| win.document())
             .expect("Failed to get document");
-        let self_str = document
-            .get_element_by_id("chat-div")
-            .unwrap()
-            .get_attribute("data-chat-div")
-            .unwrap();
-        serde_json::from_str(self_str.as_str())
-            .map_err(|err| wasm_bindgen::JsValue::from_str(&err.to_string()))
+        print_to_console("ChatStatus::restore 2");
+        if let Some(e) = document.get_element_by_id("main_body") {
+            if let Some(self_str) = e.get_attribute("data-chat-div") {
+                return serde_json::from_str(self_str.as_str())
+                    .map_err(|err| wasm_bindgen::JsValue::from_str(&err.to_string()));
+            }
+        }
+        Ok(Self {
+            responses: Vec::new(),
+        })
+    }
+
+    /// Get a display to put in response area
+    fn get_response_display(&self) -> String {
+        let mut result = String::new();
+        for i in self.responses.iter() {
+            result = format!("{result}<br/>{}", i.response);
+        }
+        result
     }
 }
 
 /// Screen fo the `chat` model interface
 pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     // Manage state
-    let mut chat_state: ChatState = ChatState::restore()?;
+    print_to_console("chat_div 1");
 
     // The container DIV that arranges the page
-    print_to_console("chat_div");
+    print_to_console("chat_div 2");
     let chat_div = document
         .create_element("div")
         .expect("Could not create DIV element");
@@ -317,12 +344,7 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         "grid-row",
         format!("{response_t} / span {response_h}"),
     )?;
-    add_css_rule(
-        document,
-        "#response-div",
-        "border",
-        "thick double #00ff00".to_string(),
-    )?;
+    add_css_rule(document, "#response-div", "overflow", "auto")?;
 
     add_css_rule(
         document,
@@ -367,11 +389,7 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     // Pad the button to the left
     add_css_rule(document, "#chat-submit", "margin-left", "1em")?;
 
-    response_div.set_inner_html(
-        format!("response t,l/WxH {response_t},{response_l}/{response_w}x{response_h}").as_str(),
-    );
-
     set_focus_on_element(document, "prompt-input");
-    chat_state.store()?;
+
     Ok(chat_div)
 }
