@@ -1,3 +1,4 @@
+use crate::filters::filter_html;
 use crate::make_request::make_request;
 use crate::manipulate_css::add_css_rule;
 use crate::set_page::set_focus_on_element;
@@ -184,9 +185,9 @@ impl ChatState {
     fn get_response_display(&self) -> String {
         let mut result = String::new();
         for i in self.responses.iter() {
-            result = format!("{result}<br/>&gt; {}<br/>&lt; {}", i.0, i.1.response);
+            result = format!("{result}\nPROMPT: {}\nRESO: {}", i.0, i.1.response);
         }
-        result
+        filter_html(result.as_str())
     }
 }
 

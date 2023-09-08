@@ -8,6 +8,7 @@ use wasm_bindgen::prelude::*;
 use crate::utility::print_to_console;
 mod chat_div;
 mod cost_div;
+mod filters;
 mod login_div;
 mod make_request;
 mod manipulate_css;
