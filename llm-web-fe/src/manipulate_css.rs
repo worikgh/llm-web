@@ -47,7 +47,7 @@ impl fmt::Display for CssRules {
 /// selectors and have a set of (property/value) pairs for each
 /// selector
 pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
-    let mut selector_rules: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    let mut result: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
 
     let style_sheets: StyleSheetList = document.style_sheets();
     for i in 0..style_sheets.length() {
@@ -80,8 +80,8 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
             let scc_style_dec: CssStyleDeclaration = css_style_rule.style();
 
             // Make sure the rules are initialised
-            if !selector_rules.contains_key(&selector) {
-                selector_rules.insert(selector.clone(), BTreeMap::new());
+            if !result.contains_key(&selector) {
+                result.insert(selector.clone(), BTreeMap::new());
             }
 
             for k in 0..scc_style_dec.length() {
@@ -96,13 +96,15 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
                     scc_style_dec.get_property_value(property_name.clone().as_str())?;
                 // At this point got the selector, the property name,,
                 // and value of the CSS rule
-                let v = selector_rules.get_mut(&selector).unwrap();
+                let v = result.get_mut(&selector).unwrap();
                 v.insert(property_name, value);
             }
         }
     }
 
-    Ok(CssRules { selector_rules })
+    Ok(CssRules {
+        selector_rules: result,
+    })
 }
 
 /// Add a style rule to the DOM.
