@@ -197,16 +197,10 @@ pub fn clear_css(document: &Document) -> Result<(), JsValue> {
         let css_rules: CssRuleList = css_style_sheet.css_rules()?;
         let lim_j = css_rules.length();
         for j in 0..lim_j {
-            let item = match css_rules.item(j) {
-                Some(i) => i,
-                None => {
-                    print_to_console_s(format!("{i}/{lim_i}:{j}/{lim_j} Failed"));
-                    continue;
-                }
-            };
-
-            let rule_text: String = item.css_text();
-
+            if css_rules.item(j).is_none() {
+                print_to_console_s(format!("{i}/{lim_i}:{j}/{lim_j} Failed"));
+                continue;
+            }
             css_style_sheet.delete_rule(j)?;
         }
     }
