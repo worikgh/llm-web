@@ -1,3 +1,4 @@
+use crate::filters::filter_html;
 use crate::manipulate_css::add_css_rule;
 #[allow(unused_imports)]
 use crate::utility::print_to_console;
@@ -35,6 +36,7 @@ pub fn set_page(f: impl Fn(&Document) -> Result<Element, JsValue>) -> Result<(),
 
 #[allow(dead_code)]
 pub fn set_status(document: &Document, status: &str) {
+    let status = &filter_html(status);
     if let Some(status_element) = document.get_element_by_id("status_div") {
         status_element.set_inner_html(status);
     } else {
