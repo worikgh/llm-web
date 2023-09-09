@@ -79,13 +79,13 @@ pub fn initialise_page() -> Result<(), JsValue> {
     footer_div.set_id("footer");
     let header_div = document.create_element("div")?;
     header_div.set_id("header");
-    let body_div = document.create_element("div")?;
-    body_div.set_id("main_body");
+    let main_body = document.create_element("div")?;
+    main_body.set_id("main_body");
 
     // Add the divs
     body.append_child(&footer_div)?;
     body.append_child(&header_div)?;
-    body.append_child(&body_div)?;
+    body.append_child(&main_body)?;
 
     // The style.  Sies given in integer units of percent
     let footer_height = 10;
