@@ -35,7 +35,7 @@ pub fn set_page(f: impl Fn(&Document) -> Result<Element, JsValue>) -> Result<(),
 
 #[allow(dead_code)]
 pub fn set_status(document: &Document, status: &str) {
-    if let Some(status_element) = document.get_element_by_id("status-div") {
+    if let Some(status_element) = document.get_element_by_id("status_div") {
         status_element.set_inner_html(status);
     } else {
         print_to_console_s(format!("Status (No status-div): {status}"));
@@ -82,6 +82,10 @@ pub fn initialise_page() -> Result<(), JsValue> {
     let main_body = document.create_element("div")?;
     main_body.set_id("main_body");
 
+    // Add a status area
+    let status_div = document.create_element("div")?;
+    status_div.set_id("status_div");
+    footer_div.append_child(&status_div)?;
     // Add the divs
     body.append_child(&footer_div)?;
     body.append_child(&header_div)?;
