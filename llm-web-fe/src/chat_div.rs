@@ -266,6 +266,7 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     side_panel_div.append_child(&select_element)?;
 
     // The clear response button
+    // Make a button that clears the responses
     let clear_response = document
         .create_element("button")
         .unwrap()
@@ -286,6 +287,7 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     clear_response.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));
     resp_closure.forget();
     side_panel_div.append_child(&clear_response)?;
+
     // Put the page together
     chat_div.append_child(&response_div).unwrap();
     chat_div.append_child(&prompt_div).unwrap();
