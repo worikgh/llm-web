@@ -9,6 +9,7 @@ use crate::set_page::set_status;
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
+use gloo_events::EventListener;
 use llm_web_common::communication::ChatPrompt;
 use llm_web_common::communication::ChatResponse;
 use llm_web_common::communication::CommType;
@@ -17,6 +18,7 @@ use llm_web_common::communication::LLMMessage;
 use llm_web_common::communication::LLMMessageType;
 use llm_web_common::communication::Message;
 use serde::{Deserialize, Serialize};
+use web_sys::KeyboardEvent;
 
 use wasm_bindgen::prelude::*;
 use web_sys::{
@@ -234,6 +236,15 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     prompt_inp.set_value("");
     prompt_inp.set_type("text");
     prompt_inp.set_id("prompt-input");
+    let prompt_input_enter = EventListener::new(&prompt_inp, "keyup", move |event| {
+        let event: KeyboardEvent = event.clone().unchecked_into();
+        let key_code = event.key_code();
+        if key_code == 13 {
+            // <enter> keycode
+            chat_submit();
+        }
+    });
+    prompt_input_enter.forget();
     prompt_div.append_child(&prompt_inp)?;
 
     // The submit button
