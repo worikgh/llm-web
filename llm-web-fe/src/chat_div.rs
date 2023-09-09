@@ -185,7 +185,7 @@ impl ChatState {
     fn get_response_display(&self) -> String {
         let mut result = String::new();
         for i in self.responses.iter() {
-            result = format!("{result}\nPROMPT: {}\nRESO: {}", i.0, i.1.response);
+            result = format!("{result}\nPROMPT: {}\nRESP: {}", i.0, i.1.response);
         }
         filter_html(result.as_str())
     }
