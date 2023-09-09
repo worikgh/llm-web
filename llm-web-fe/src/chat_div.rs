@@ -1,13 +1,14 @@
 use crate::filters::filter_html;
 use crate::make_request::make_request;
 use crate::manipulate_css::add_css_rule;
+use crate::manipulate_css::clear_css;
+use crate::manipulate_css::get_css_rules;
+use crate::manipulate_css::set_css_rules;
 use crate::set_page::set_focus_on_element;
 use crate::set_page::set_status;
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
-use serde::{Deserialize, Serialize};
-// use llm_rs;
 use llm_web_common::communication::ChatPrompt;
 use llm_web_common::communication::ChatResponse;
 use llm_web_common::communication::CommType;
@@ -15,6 +16,8 @@ use llm_web_common::communication::InvalidRequest;
 use llm_web_common::communication::LLMMessage;
 use llm_web_common::communication::LLMMessageType;
 use llm_web_common::communication::Message;
+use serde::{Deserialize, Serialize};
+
 use wasm_bindgen::prelude::*;
 use web_sys::{
     window, Document, Element, HtmlButtonElement, HtmlInputElement, HtmlOptionElement,
@@ -294,6 +297,33 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     clear_response.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));
     resp_closure.forget();
     side_panel_div.append_child(&clear_response)?;
+
+    // Experimental button
+    let clear_style = document
+        .create_element("button")
+        .unwrap()
+        .dyn_into::<HtmlButtonElement>()
+        .unwrap();
+    clear_style.set_inner_text("Style Experiment");
+    clear_style.set_id("clear_style");
+    let resp_closure = Closure::wrap(Box::new(|| {
+        print_to_console("resp_closure 1");
+        let document = window()
+            .and_then(|win| win.document())
+            .expect("Failed to get document");
+        let mut cs_rules = get_css_rules(&document).unwrap();
+        cs_rules
+            .insert("#side-panel-div", "background-color", "aliceblue")
+            .unwrap();
+        clear_css(&document).unwrap();
+        print_to_console("resp_closure 2");
+
+        set_css_rules(&document, &cs_rules).unwrap();
+        print_to_console("resp_closure 3");
+    }) as Box<dyn Fn()>);
+    clear_style.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));
+    resp_closure.forget();
+    side_panel_div.append_child(&clear_style)?;
 
     // Put the page together
     chat_div.append_child(&response_div).unwrap();

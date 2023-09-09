@@ -27,7 +27,21 @@ fn get_style_element(document: &Document) -> Result<HtmlStyleElement, JsValue> {
 /// Struct for initialising CSS rules
 #[derive(Debug, Clone)]
 pub struct CssRules {
-    selector_rules: BTreeMap<String, BTreeMap<String, String>>,
+    pub selector_rules: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+impl CssRules {
+    pub fn insert(&mut self, selector: &str, rule: &str, value: &str) -> Result<(), JsValue> {
+        if !self.selector_rules.contains_key(selector) {
+            self.selector_rules
+                .insert(selector.to_string(), BTreeMap::new());
+        }
+        self.selector_rules
+            .get_mut(selector)
+            .unwrap()
+            .insert(rule.to_string(), value.to_string());
+        Ok(())
+    }
 }
 
 impl fmt::Display for CssRules {
@@ -51,7 +65,7 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
 
     let style_sheets: StyleSheetList = document.style_sheets();
     for i in 0..style_sheets.length() {
-        // For each style sheet.  Frced unwrap OK because `i` is
+        // For each style sheet.  Forced unwrap OK because `i` is
         // confined to a range
         let style_sheet: StyleSheet = style_sheets.get(i).unwrap();
         let css_style_sheet =
@@ -107,6 +121,17 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
     })
 }
 
+/// Add in the rules in the passed container
+pub fn set_css_rules(document: &Document, css_rules: &CssRules) -> Result<(), JsValue> {
+    for (selector, v) in css_rules.selector_rules.iter() {
+        for (rule, value) in v.iter() {
+            add_css_rule(document, selector, rule, value)?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Add a style rule to the DOM.
 /// Generic parameter `T` allows `value` to be `&str` or `String`
 pub fn add_css_rule<T: Into<String>>(
@@ -117,6 +142,8 @@ pub fn add_css_rule<T: Into<String>>(
 ) -> Result<(), JsValue> {
     let value: String = value.into();
     // Check if the style element already contains CSS rules
+    print_to_console("add_css_rule 1");
+
     if let Some(rules) = get_css_rules(document)?.selector_rules.get(selector) {
         // The selector is registered
         if let Some(v) = rules.get(property) {
@@ -150,6 +177,40 @@ pub fn add_css_rule<T: Into<String>>(
 
 #[allow(dead_code)]
 pub fn clear_css(document: &Document) -> Result<(), JsValue> {
+    // See: https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleSheet/deleteRule
+    print_to_console("clear_css 1");
+    let style_sheets: StyleSheetList = document.style_sheets();
+    let lim_i = style_sheets.length();
+    for i in 0..lim_i {
+        // For each style sheet.  Forced unwrap OK because `i` is
+        // confined to a range
+        let style_sheet: StyleSheet = style_sheets.get(i).unwrap();
+        let css_style_sheet =
+            match wasm_bindgen::JsCast::dyn_into::<web_sys::CssStyleSheet>(style_sheet) {
+                Ok(css) => css,
+                Err(err) => {
+                    print_to_console_s(format!("{err:?} Not a CssStyleSheet"));
+                    continue;
+                }
+            };
+        // Got a CssStyleSheet
+        let css_rules: CssRuleList = css_style_sheet.css_rules()?;
+        let lim_j = css_rules.length();
+        for j in 0..lim_j {
+            let item = match css_rules.item(j) {
+                Some(i) => i,
+                None => {
+                    print_to_console_s(format!("{i}/{lim_i}:{j}/{lim_j} Failed"));
+                    continue;
+                }
+            };
+
+            let rule_text: String = item.css_text();
+
+            css_style_sheet.delete_rule(j)?;
+        }
+    }
+
     let style_element = get_style_element(document)?;
     style_element.set_inner_html("");
     Ok(())
