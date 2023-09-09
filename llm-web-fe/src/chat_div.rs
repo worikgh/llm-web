@@ -2,6 +2,7 @@ use crate::filters::filter_html;
 use crate::make_request::make_request;
 use crate::manipulate_css::add_css_rule;
 use crate::set_page::set_focus_on_element;
+use crate::set_page::set_status;
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
@@ -41,7 +42,13 @@ fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
 
 /// The callback for `make_request`
 fn chat_request(message: Message) {
-    print_to_console_s(format!("chat_request 1 {}", message.comm_type));
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    set_status(
+        &document,
+        format!("chat_request 1 {}", message.comm_type).as_str(),
+    );
     match message.comm_type {
         CommType::ChatResponse => {
             print_to_console("chat_request 1.1");
@@ -87,7 +94,7 @@ fn chat_submit() {
         .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
         .unwrap();
     let prompt = prompt_input.value();
-
+    set_status(&document, format!("Sending prompt: {prompt}").as_str());
     // Store the prompt
     let mut chat_state = ChatState::restore().unwrap();
     chat_state.prompt = Some(prompt.clone());
