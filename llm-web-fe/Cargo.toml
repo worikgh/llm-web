@@ -34,6 +34,7 @@ features = [
 'HtmlOptionsCollection',
 'HtmlSelectElement',
 'HtmlStyleElement',
+'KeyboardEvent',
 'Node',
 'StyleSheet',
 'StyleSheetList',
