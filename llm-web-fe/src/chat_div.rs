@@ -60,16 +60,6 @@ fn chat_request(message: Message) {
             let chat_response: ChatResponse =
                 serde_json::from_str(message.object.as_str()).unwrap();
             process_chat_response(chat_response).unwrap();
-            // pub struct ChatRequestInfo {
-            // :
-            // 	pub model: String,
-            // 	pub usage: Usage,
-            // 	pub choices: Vec<ChatChoice>,
-            // }
-            // let model = chat_response.request_info.model;
-            // let usage = chat_response.request_info.usage;
-            // let choices = chat_response.request_info.choices;
-            // let choice = choices.first();
         }
         CommType::InvalidRequest => {
             let inr: InvalidRequest =
@@ -100,40 +90,9 @@ fn chat_submit() {
         .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
         .unwrap();
     let prompt: String = prompt_input.value();
-
-    set_status(&document, format!("Sending prompt: {prompt}").as_str());
-
-    // Store the prompt
-    let mut chat_state = ChatState::restore().unwrap();
-    chat_state.prompt = Some(prompt.clone());
     prompt_input.set_value("");
-
-    let mut messages: Vec<LLMMessage> = Vec::new();
-    // Allways using the same role (TODO: this needs to be configurable)
-    messages.push(LLMMessage {
-        role: LLMMessageType::System,
-        content: "You are a helpful assistant".to_string(),
-    });
-    for i in 0..chat_state.responses.len() {
-        // chat_state.responses[i] has a prompt and a response.
-        let prompt: String = chat_state.responses[i].0.clone();
-        let response: String = chat_state.responses[i].1.response.clone();
-
-        messages.push(LLMMessage {
-            role: LLMMessageType::User,
-            content: prompt,
-        });
-        messages.push(LLMMessage {
-            role: LLMMessageType::Assistant,
-            content: response,
-        });
-    }
-
-    messages.push(LLMMessage {
-        role: LLMMessageType::User,
-        content: prompt,
-    });
-    chat_state.store().unwrap();
+    set_status(&document, format!("Sending prompt: {prompt}").as_str());
+    let messages = build_messages(prompt);
 
     // Get the model
     let model_selection: HtmlSelectElement = document
@@ -314,7 +273,7 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         .unwrap()
         .dyn_into::<HtmlButtonElement>()
         .unwrap();
-    clear_response.set_inner_text("Clear Response");
+    clear_response.set_inner_text("Clear Conversation");
     clear_response.set_id("clear_response");
     let resp_closure = Closure::wrap(Box::new(|| {
         let document = window()
@@ -496,4 +455,52 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     set_focus_on_element(document, "prompt-input");
 
     Ok(chat_div)
+}
+
+/// Called to construct the messages a request.  Each interaction with
+/// the LLM includes a history of prevous interactions.  In the
+/// general case this is the history of the current conversation.
+/// `prompt` is the user's latest input
+fn build_messages(prompt: String) -> Vec<LLMMessage> {
+    // `messages` is the historical response, build it here.
+    let mut result: Vec<LLMMessage> = Vec::new();
+
+    // The material to use as the historical context of this
+    // conversation is stored in `ChatState`
+    let mut chat_state = ChatState::restore().unwrap();
+
+    // Store the prompt so it can be matched with the reponse to this
+    // query, and stored
+    chat_state.prompt = Some(prompt.clone());
+
+    // The "role" is first.  Allways using the same role (TODO: this
+    // needs to be configurable)
+    result.push(LLMMessage {
+        role: LLMMessageType::System,
+        content: "You are a helpful assistant".to_string(),
+    });
+
+    // Then the history of the conversation
+    for i in 0..chat_state.responses.len() {
+        // chat_state.responses[i] has a prompt and a response.
+        let prompt: String = chat_state.responses[i].0.clone();
+        let response: String = chat_state.responses[i].1.response.clone();
+
+        result.push(LLMMessage {
+            role: LLMMessageType::User,
+            content: prompt,
+        });
+        result.push(LLMMessage {
+            role: LLMMessageType::Assistant,
+            content: response,
+        });
+    }
+
+    // Finally the prompt
+    result.push(LLMMessage {
+        role: LLMMessageType::User,
+        content: prompt,
+    });
+    chat_state.store().unwrap();
+    result
 }
