@@ -123,12 +123,20 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
 
 /// Add in the rules in the passed container
 pub fn set_css_rules(document: &Document, css_rules: &CssRules) -> Result<(), JsValue> {
+    let style_sheets: StyleSheetList = document.style_sheets();
+    let lim_i = style_sheets.length();
+    assert!(lim_i > 0);
+    let style_sheet: StyleSheet = style_sheets.get(0).unwrap();
+    let css_style_sheet =
+        wasm_bindgen::JsCast::dyn_into::<web_sys::CssStyleSheet>(style_sheet).unwrap();
+
     for (selector, v) in css_rules.selector_rules.iter() {
         for (rule, value) in v.iter() {
-            add_css_rule(document, selector, rule, value)?;
+            let rule = format!("{selector}{{{rule}:{value}}}");
+            print_to_console_s(format!("Set style: {rule}"));
+            css_style_sheet.insert_rule(rule.as_str())?;
         }
     }
-
     Ok(())
 }
 
