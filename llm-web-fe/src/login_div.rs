@@ -58,29 +58,29 @@ pub fn login_div(document: &Document) -> Result<Element, JsValue> {
     login_fields_div.append_child(&password_input)?;
     login_fields_div.append_child(&user_text_submit)?;
     login_main_div.append_child(&login_fields_div)?;
-    add_css_rule(document, "html, body", "height", "100%".to_string())?; // Add an event listener to the button.
-    add_css_rule(document, "html, body", "margin", "0".to_string())?; // Add an event listener to the button.
+    add_css_rule(document, "html, body", "height", "100%".to_string())?;
+    add_css_rule(document, "html, body", "margin", "0".to_string())?;
     add_css_rule(
         document,
         "#login-fields-div > input",
         "margin",
         "1em".to_string(),
-    )?; // Add an event listener to the button.
+    )?;
     add_css_rule(
         document,
         "#login-fields-div",
         "border",
         "2px solid black".to_string(),
-    )?; // Add an event listener to the button.
-    add_css_rule(document, "#login-fields-div", "width", "50%".to_string())?; // Add an event listener to the button.
-    add_css_rule(document, "#login-fields-div", "display", "flex".to_string())?; // Add an event listener to the button.
+    )?;
+    add_css_rule(document, "#login-fields-div", "width", "50%".to_string())?;
+    add_css_rule(document, "#login-fields-div", "display", "flex".to_string())?;
     add_css_rule(
         document,
         "#login-fields-div",
         "flex-direction",
         "column".to_string(),
-    )?; // Add an event listener to the button.
-    add_css_rule(document, "#login-fields-div", "padding", "10px".to_string())?; // Add an event listener to the button.
+    )?;
+    add_css_rule(document, "#login-fields-div", "padding", "10px".to_string())?;
 
     let on_click = EventListener::new(&user_text_submit, "click", move |_event| {
         // Call whatever function you would like with the value of the
