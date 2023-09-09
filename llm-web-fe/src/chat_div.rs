@@ -85,9 +85,10 @@ fn chat_request(message: Message) {
     };
 }
 
-/// The callback for the submit button to send a prompt to the model
+/// The callback for the submit button to send a prompt to the model.
 fn chat_submit() {
     print_to_console("chat_submit 1");
+
     // Get the contents of the prompt
     let document = window()
         .and_then(|win| win.document())
@@ -98,14 +99,43 @@ fn chat_submit() {
         .dyn_into::<HtmlInputElement>()
         .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
         .unwrap();
-    let prompt = prompt_input.value();
+    let prompt: String = prompt_input.value();
+
     set_status(&document, format!("Sending prompt: {prompt}").as_str());
+
     // Store the prompt
     let mut chat_state = ChatState::restore().unwrap();
     chat_state.prompt = Some(prompt.clone());
+    prompt_input.set_value("");
+
+    let mut messages: Vec<LLMMessage> = Vec::new();
+    // Allways using the same role (TODO: this needs to be configurable)
+    messages.push(LLMMessage {
+        role: LLMMessageType::System,
+        content: "You are a helpful assistant".to_string(),
+    });
+    for i in 0..chat_state.responses.len() {
+        // chat_state.responses[i] has a prompt and a response.
+        let prompt: String = chat_state.responses[i].0.clone();
+        let response: String = chat_state.responses[i].1.response.clone();
+
+        messages.push(LLMMessage {
+            role: LLMMessageType::User,
+            content: prompt,
+        });
+        messages.push(LLMMessage {
+            role: LLMMessageType::Assistant,
+            content: response,
+        });
+    }
+
+    messages.push(LLMMessage {
+        role: LLMMessageType::User,
+        content: prompt,
+    });
     chat_state.store().unwrap();
 
-    prompt_input.set_value("");
+    // Get the model
     let model_selection: HtmlSelectElement = document
         .get_element_by_id("model-chat")
         .unwrap()
@@ -119,23 +149,14 @@ fn chat_submit() {
         todo!("Handle this")
     };
 
-    // Get token
+    // Get the token
     let token: String;
     if let Some(t) = document.body().unwrap().get_attribute("data.token") {
         token = t;
     } else {
         todo!("Set status concerning error: No data token");
     }
-    // As a start sending one message and not building a conversation
-    let message_role = LLMMessage {
-        role: LLMMessageType::System,
-        content: "You are a helpful assistant".to_string(),
-    };
-    let message_body = LLMMessage {
-        role: LLMMessageType::User,
-        content: prompt,
-    };
-    let messages = vec![message_role, message_body];
+
     let chat_prompt = ChatPrompt {
         model,
         messages,
@@ -153,8 +174,8 @@ fn chat_submit() {
 struct ChatState {
     // When a prompt is sent store it `prompt`.  When the response
     // is received store the response and prompt together
-    responses: Vec<(String, ChatResponse)>,
     prompt: Option<String>,
+    responses: Vec<(String, ChatResponse)>,
 }
 
 impl ChatState {
