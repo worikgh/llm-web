@@ -1,11 +1,13 @@
 use crate::session::Session;
 use base64::{engine::general_purpose, Engine as _};
 use bcrypt::{hash, verify, DEFAULT_COST};
-use chrono::{Duration, Utc};
+use chrono::DateTime;
+use chrono::{Duration, NaiveDateTime, Utc};
 use fs2::FileExt;
 use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
+use simple_crypt::decrypt;
 use simple_crypt::encrypt;
 use std::collections::HashMap;
 use std::fs::File;
@@ -64,12 +66,10 @@ pub async fn login(
                 eprintln!("login({username}, {password}) Verified");
                 // Successful login.
                 // Initialise session and a result
-                let expiry = Utc::now() + Duration::hours(6);
+                let expiry: DateTime<Utc> = Utc::now() + Duration::hours(6);
                 let key = record.key.clone();
-                let uuid = record.uuid;
-                let token = general_purpose::STANDARD.encode(
-                    encrypt(format!("{uuid}{expiry}").as_bytes(), &key).expect("Encrypt a token"),
-                );
+                let uuid: Uuid = record.uuid;
+                let token = generate_token(&uuid, &expiry, &key);
                 sessions.lock().unwrap().insert(
                     record.uuid,
                     Session {
@@ -106,11 +106,9 @@ pub async fn login(
 /// otherwise
 pub async fn add_user(username: &str, password: &str) -> io::Result<bool> {
     eprintln!("add_user({username}, {password})");
-    eprintln!("Password as bytes: {:?}", password.trim().as_bytes());
     // No white space in passwords
     let hashed_password = hash(password.trim(), DEFAULT_COST).unwrap();
     let rng = rand::thread_rng();
-    eprintln!("add_user({username}, {password})");
     let key: Vec<u8> = rng
         .sample_iter(rand::distributions::Alphanumeric)
         .take(32)
@@ -265,6 +263,34 @@ struct AuthorisationRecord {
     key: Vec<u8>,
 }
 
+/// Handle tokens
+pub fn generate_token(uuid: &Uuid, expiry: &DateTime<Utc>, key: &Vec<u8>) -> String {
+    general_purpose::STANDARD
+        .encode(encrypt(format!("{uuid}{expiry}").as_bytes(), key).expect("Encrypt a token"))
+}
+
+pub fn decode_token(
+    encoded_uuid_expiry: String,
+    key: &Vec<u8>,
+) -> Result<(Uuid, DateTime<Utc>), Box<dyn std::error::Error>> {
+    let decoded_data = general_purpose::STANDARD.decode(encoded_uuid_expiry)?;
+    let decrypted_data = decrypt(&decoded_data, key)?;
+
+    let decrypted_string = String::from_utf8(decrypted_data)?;
+
+    let parts: (&str, &str) = decrypted_string.split_at(36);
+    let uuid_part = parts.0;
+    let datetime_part = parts.1;
+
+    let uuid = Uuid::parse_str(uuid_part)?;
+    let datetime = DateTime::<Utc>::from_utc(
+        NaiveDateTime::parse_from_str(datetime_part, "%Y-%m-%d %H:%M:%S%.f %Z")?,
+        Utc,
+    );
+
+    Ok((uuid, datetime))
+}
+
 #[cfg(test)]
 pub mod tests {
     //use llm_web_common::communication::LoginRequest;
@@ -324,5 +350,28 @@ pub mod tests {
         let b = delete_user(test_name.as_str()).await.unwrap();
         eprintln!("Repeating delete record returns false: {b}");
         assert!(!b);
+    }
+    #[test]
+    fn token_coding() {
+        let uuid = Uuid::new_v4();
+        let expiry: DateTime<Utc> = Utc::now() + Duration::hours(6);
+        let key: Vec<u8> = vec![1, 2, 3, 4];
+        let token = generate_token(&uuid, &expiry, &key);
+        println!("uuid:{uuid} expiry:{expiry}");
+
+        match NaiveDateTime::parse_from_str(
+            "2023-09-10 07:31:29.249939359 UTC",
+            "%Y-%m-%d %H:%M:%S%.f %Z",
+        ) {
+            Ok(_) => (),
+            Err(err) => panic!("Failed time: {}", err),
+        };
+
+        let (uuid_test, expiry_test) = match decode_token(token, &key) {
+            Ok(a) => a,
+            Err(err) => panic!("{}", err),
+        };
+        assert!(uuid == uuid_test);
+        assert!(expiry == expiry_test);
     }
 }
