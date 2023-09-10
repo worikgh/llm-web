@@ -26,22 +26,37 @@ use web_sys::{
     HtmlSelectElement,
 };
 
+/// Update the cost display
+fn update_cost(document: &Document, total_cost: f64, this_cost: f64) {
+    let cost_div = document.get_element_by_id("cost_div").unwrap();
+    let cost_string = format!("Cost: {total_cost:.3}/{this_cost:.4}");
+    cost_div.set_inner_html(cost_string.as_str());
+    set_status(document, cost_string.as_str());
+}
 /// A prompt has returned from the LLM.  Process it here
 fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
     print_to_console("chat_request 1");
     let mut chat_state = ChatState::restore()?;
     let prompt = chat_state.prompt.clone().unwrap();
-    chat_state.responses.push((prompt, chat_response));
+
+    // Get the cost
+    let this_cost = chat_response.cost;
+    let total_cost = chat_state.responses.iter().fold(0.0, |a, b| a + b.1.cost) + this_cost;
 
     // Save the response
-    // Get response area
+    chat_state.responses.push((prompt, chat_response));
+
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
+
+    // Get response area and update the response
     let result_div = document.get_element_by_id("response-div").unwrap();
     result_div.set_inner_html(chat_state.get_response_display().as_str());
     chat_state.store()?;
     print_to_console("chat_request 2");
+
+    update_cost(&document, total_cost, this_cost);
     Ok(())
 }
 
@@ -56,9 +71,10 @@ fn chat_request(message: Message) {
     );
     match message.comm_type {
         CommType::ChatResponse => {
-            print_to_console("chat_request 1.1");
+            print_to_console_s(format!("chat_request 1.1: {message:?}"));
             let chat_response: ChatResponse =
                 serde_json::from_str(message.object.as_str()).unwrap();
+            print_to_console("chat_request 1.2");
             process_chat_response(chat_response).unwrap();
         }
         CommType::InvalidRequest => {
@@ -177,9 +193,11 @@ impl ChatState {
     fn get_response_display(&self) -> String {
         let mut result = String::new();
         for i in self.responses.iter() {
-            result = format!("{result}\nPROMPT: {}\nRESP: {}", i.0, i.1.response);
+            let prompt = filter_html(i.0.as_str());
+            let respone = filter_html(i.1.response.as_str());
+            result = format!("{result}<br/><span class='prompt'>{prompt}</span><br/><span class='response'>{respone}</span>",);
         }
-        filter_html(result.as_str())
+        result
     }
 }
 
@@ -275,7 +293,7 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         .unwrap();
     clear_response.set_inner_text("Clear Conversation");
     clear_response.set_id("clear_response");
-    let resp_closure = Closure::wrap(Box::new(|| {
+    let clear_conversation_closure = Closure::wrap(Box::new(|| {
         let document = window()
             .and_then(|win| win.document())
             .expect("Failed to get document");
@@ -284,9 +302,10 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         let mut chat_state = ChatState::restore().unwrap();
         chat_state.responses.clear();
         chat_state.store().unwrap();
+        update_cost(&document, 0.0, 0.0);
     }) as Box<dyn Fn()>);
-    clear_response.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));
-    resp_closure.forget();
+    clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
+    clear_conversation_closure.forget();
     side_panel_div.append_child(&clear_response)?;
 
     // Experimental button
@@ -370,6 +389,14 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     // // Inject the style into the DOM.
     // clear_css(document)?;
 
+    add_css_rule(document, ".prompt", "font-size", "small")?;
+    add_css_rule(document, ".prompt", "color", "#232322")?;
+    add_css_rule(document, ".prompt", "background-color", "#fff4f4")?;
+
+    add_css_rule(document, ".response", "font-size", "small")?;
+    add_css_rule(document, ".response", "color", "#450627")?;
+    add_css_rule(document, ".response", "background-color", "#f3f2f2")?;
+
     add_css_rule(document, "html, body", "height", "100%".to_string())?;
     add_css_rule(document, "html, body", "margin", "0".to_string())?;
     add_css_rule(document, "html, body", "padding", "0".to_string())?;
@@ -407,7 +434,8 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         "grid-row",
         format!("{response_t} / span {response_h}"),
     )?;
-    add_css_rule(document, "#response-div", "overflow", "auto")?;
+    add_css_rule(document, "#response-div", "overflow-y", "scroll")?;
+    add_css_rule(document, "#response-div", "overflow-wrap", "break-word")?;
 
     add_css_rule(
         document,

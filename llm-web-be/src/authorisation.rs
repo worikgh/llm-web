@@ -327,7 +327,7 @@ pub mod tests {
         assert!(b);
 
         // Test logging the user in
-        let sessions = Arc::new(Mutex::new(HashMap::<Uuid, Session>::new()));
+        let sessions = Arc::new(Mutex::new(HashMap::<String, Session>::new()));
         let test: bool = match login(username.clone(), password.to_string(), sessions).await {
             Ok(t) => t.is_some(),
             Err(err) => panic!("{}", err),

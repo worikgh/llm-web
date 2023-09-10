@@ -12,6 +12,7 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use hyper::{Body, Request, Response, StatusCode};
 use llm_rs::json::ChatRequestInfo;
+use llm_rs::json::Usage;
 use llm_rs::openai_interface;
 use llm_web_common::communication::ChatPrompt;
 use llm_web_common::communication::ChatResponse;
@@ -228,6 +229,7 @@ impl AppBackend {
                 "process_chat_request 1.5: {}. {:?}",
                 message.comm_type, message.object
             );
+
             // Forced unwrap OK because comm_type is ChatPrompt
             let prompt: ChatPrompt =
                 serde_json::from_str(&message.object).expect("Should be a ChatPrompt");
@@ -289,18 +291,9 @@ impl AppBackend {
             }
             eprintln!("process_chat_request 4");
 
-            let tokens: Vec<(String, u32)> = vec![
-                (
-                    "prompt_tokens".to_string(),
-                    chat_response.1.usage.prompt_tokens,
-                ),
-                (
-                    "completion_tokens".to_string(),
-                    chat_response.1.usage.completion_tokens,
-                ),
-            ];
+            let cost = Self::cost(chat_response.1.usage, chat_response.1.model.as_str());
             let response = chat_response.1.choices[0].message.content.clone();
-            ChatResponse { tokens, response }
+            ChatResponse { cost, response }
         };
 
         Message {
@@ -384,6 +377,20 @@ impl AppBackend {
         }
 
         Ok(rustls::PrivateKey(keys[0].clone()))
+    }
+
+    // Calculate the cost of a OpenAI chat
+    /// Convert the usege into a price.
+    fn cost(usage: Usage, model: &str) -> f64 {
+        // GPT-4is more expensive
+        if model.starts_with("gpt-4") {
+            usage.completion_tokens as f64 / 1000.0 * 12.0
+                + usage.prompt_tokens as f64 / 1000.0 * 0.06
+        } else if model.starts_with("gpt-3") {
+            usage.total_tokens as f64 / 1000.0 * 0.2
+        } else {
+            panic!("{}", model);
+        }
     }
 }
 

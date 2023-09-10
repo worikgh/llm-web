@@ -84,6 +84,11 @@ pub fn initialise_page() -> Result<(), JsValue> {
     let main_body = document.create_element("div")?;
     main_body.set_id("main_body");
 
+    // Add a cost area to display cost
+    let cost_div = document.create_element("div")?;
+    cost_div.set_id("cost_div");
+    header_div.append_child(&cost_div)?;
+
     // Add a status area
     let status_div = document.create_element("div")?;
     status_div.set_id("status_div");
@@ -142,6 +147,9 @@ pub fn initialise_page() -> Result<(), JsValue> {
     add_css_rule(&document, "#footer", "border", "1px solid black")?;
     add_css_rule(&document, "#header", "border", "1px solid black")?;
     add_css_rule(&document, "#main_body", "border", "1px solid black")?;
+
+    add_css_rule(&document, "#cost_div", "float", "right")?;
+    add_css_rule(&document, "#cost_div", "background-color", "#f2fbfa")?;
 
     Ok(())
 }

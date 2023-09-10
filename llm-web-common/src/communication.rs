@@ -98,13 +98,9 @@ pub struct ChatPrompt {
 /// From llm-web-be -> llm-web-fe.  Response from LLM
 /// Has to send back all the information the front end needs
 pub struct ChatResponse {
-    // `tokens`: OpenAI reports on two sorts of token use, one for the
-    // prompt and one for the response. [Documented
-    // here](https://platform.openai.com/docs/api-reference/making-requests).
-    // As this is generalised to other suppliers of LLMs they will
-    // have their own token schemes.  Hopefully the tokens can be
-    // described by a name and an unsigned int.
-    pub tokens: Vec<(String, u32)>,
+    // For every chat response there is a (possibly zero) cost.  Not
+    // contemplating a negative cost, but it is possible.
+    pub cost: f64,
     // The response: OpenAI can return an array of responses,
     // essentially offering many opinions.  This is controlled with a
     // parameter in the request.  Here, for now, only one will be
