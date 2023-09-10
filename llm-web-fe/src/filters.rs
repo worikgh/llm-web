@@ -3,6 +3,8 @@ pub fn filter_html(input: &str) -> String {
     let mut result = String::new();
     for c in input.chars() {
         match c {
+            '\t' => result.push_str("&nbsp;&nbsp;&nbsp;&nbsp;"),
+            ' ' => result.push_str("&nbsp;"),
             '\n' => result.push_str("<br/>"),
             '<' => result.push_str("&lt;"),
             '>' => result.push_str("&gt;"),
