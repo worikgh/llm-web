@@ -31,64 +31,24 @@ use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 use std::{env, fs, io};
 use uuid::Uuid;
-#[derive(Debug)]
-/// Combine errors
-enum ServerError {
-    Serde(serde_json::Error),
-    Hyper(hyper::Error),
-    HyperHttp(hyper::http::Error),
-}
-impl From<serde_json::Error> for ServerError {
-    fn from(err: serde_json::Error) -> ServerError {
-        ServerError::Serde(err)
-    }
-}
-
-impl From<hyper::Error> for ServerError {
-    fn from(err: hyper::Error) -> ServerError {
-        ServerError::Hyper(err)
-    }
-}
-impl From<hyper::http::Error> for ServerError {
-    fn from(err: hyper::http::Error) -> ServerError {
-        ServerError::HyperHttp(err)
-    }
-}
-
-impl fmt::Display for ServerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ServerError::Serde(ref e) => e.fmt(f),
-            ServerError::Hyper(ref e) => e.fmt(f),
-            ServerError::HyperHttp(ref e) => e.fmt(f),
-        }
-    }
-}
-
-impl Error for ServerError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            ServerError::Serde(ref e) => Some(e),
-            ServerError::Hyper(ref e) => Some(e),
-            ServerError::HyperHttp(ref e) => Some(e),
-        }
-    }
-}
 
 fn _error(err: String) -> io::Error {
     io::Error::new(io::ErrorKind::Other, err)
 }
 
 #[derive(Debug, Clone)]
-pub struct DataServer {
+pub struct AppBackend {
+    /// The front end logs in and starts a session.  Each session has
+    /// a unique UUID that is used to index it
     pub sessions: Arc<Mutex<HashMap<Uuid, Session>>>,
 }
 
-impl DataServer {
+impl AppBackend {
     pub fn new() -> Self {
         let sessions = Arc::new(Mutex::new(HashMap::<Uuid, Session>::new()));
         Self { sessions }
     }
+
     pub async fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // First parameter is port number (optional, defaults to 1337)
         let port = match env::args().nth(1) {
@@ -97,7 +57,7 @@ impl DataServer {
         };
         let addr = format!("127.0.0.1:{}", port).parse()?;
 
-        let data_server = DataServer::new();
+        let data_server = AppBackend::new();
         let data_server = Arc::new(data_server);
         let service = make_service_fn(move |_: _| {
             let data_server = Arc::clone(&data_server);
@@ -403,6 +363,52 @@ impl DataServer {
         Ok(rustls::PrivateKey(keys[0].clone()))
     }
 }
+
+/// `ServerError` is....
+#[derive(Debug)]
+/// Combine errors
+enum ServerError {
+    Serde(serde_json::Error),
+    Hyper(hyper::Error),
+    HyperHttp(hyper::http::Error),
+}
+impl From<serde_json::Error> for ServerError {
+    fn from(err: serde_json::Error) -> ServerError {
+        ServerError::Serde(err)
+    }
+}
+
+impl From<hyper::Error> for ServerError {
+    fn from(err: hyper::Error) -> ServerError {
+        ServerError::Hyper(err)
+    }
+}
+impl From<hyper::http::Error> for ServerError {
+    fn from(err: hyper::http::Error) -> ServerError {
+        ServerError::HyperHttp(err)
+    }
+}
+
+impl fmt::Display for ServerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ServerError::Serde(ref e) => e.fmt(f),
+            ServerError::Hyper(ref e) => e.fmt(f),
+            ServerError::HyperHttp(ref e) => e.fmt(f),
+        }
+    }
+}
+
+impl Error for ServerError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match *self {
+            ServerError::Serde(ref e) => Some(e),
+            ServerError::Hyper(ref e) => Some(e),
+            ServerError::HyperHttp(ref e) => Some(e),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,7 +451,7 @@ mod tests {
             comm_type: CommType::LoginRequest,
             object: serde_json::to_string(&lr).unwrap(),
         };
-        let server = DataServer::new();
+        let server = AppBackend::new();
         let result = server.process_login(&msg).await;
         eprintln!("result ({})", result,);
         assert!(result.comm_type == CommType::LoginResponse);
@@ -463,7 +469,7 @@ mod tests {
             comm_type: CommType::ChatPrompt,
             object: serde_json::to_string(&lr).unwrap(),
         };
-        let server = DataServer::new();
+        let server = AppBackend::new();
         let result = server.process_login(&msg).await;
         eprintln!("result.comm_type ({})", result.comm_type,);
         assert!(result.comm_type == CommType::InvalidRequest);
@@ -472,7 +478,7 @@ mod tests {
     #[tokio::test]
     async fn server_test() {
         // Server to test
-        let server = DataServer::new();
+        let server = AppBackend::new();
 
         // A user name and password to add
         let username = get_unique_user("server::test::server_test").await;

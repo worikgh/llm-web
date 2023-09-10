@@ -22,7 +22,7 @@ async fn main() {
     if args.len() == 0 {
         // No more args so serve an echo service over HTTPS, with
         // proper error handling.
-        if let Err(e) = server::DataServer::run_server().await {
+        if let Err(e) = server::AppBackend::run_server().await {
             eprintln!("FAILED: {}", e);
             std::process::exit(1);
         }
