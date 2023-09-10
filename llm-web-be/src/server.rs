@@ -48,6 +48,7 @@ impl AppBackend {
         Self { sessions }
     }
 
+    /// Main loop
     pub async fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // First parameter is port number (optional, defaults to 1337)
         let port = match env::args().nth(1) {
@@ -241,35 +242,46 @@ impl AppBackend {
                     object: serde_json::to_string(&chat_response).unwrap(),
                 };
             }
+
+            // Now processing a chat_request for a validated session
+
+            // Need an API key for OpenAI
             let api_key = env::var("OPENAI_API_KEY").unwrap();
+
             // Put the conversation so far in here
-            // = [Message { role, content }]
             let messages: Vec<LLMMessage> = prompt.messages;
 
+            // The JSON payload
             let data = json!({
             "messages": messages,
             "model": prompt.model.as_str(),
             "temperature": prompt.temperature,
                 });
 
-            eprintln!("process_chat_request 2");
-            // Calling `openai_interface::ApiInterface::send_chat` a
-            // synchronous function that blocks from an async
-            // function.  This compiles.
-            let chat_response: (HashMap<String, String>, ChatRequestInfo) =
-                match openai_interface::ApiInterface::send_chat(api_key.as_str(), &data) {
-                    Ok(response) => response,
-                    Err(err) => {
-                        let chat_response = InvalidRequest {
-                            reason: format!("Failed `send_chat`.  Error: {err}"),
-                        };
-                        return Message {
-                            comm_type: CommType::InvalidRequest,
-                            object: serde_json::to_string(&chat_response).unwrap(),
-                        };
-                    }
-                };
-            eprintln!("process_chat_request 3");
+            let response_result: Result<(HashMap<String, String>, ChatRequestInfo), Message> =
+                tokio::task::spawn_blocking(
+                    move || match openai_interface::ApiInterface::send_chat(api_key.as_str(), &data)
+                    {
+                        Ok(r) => Ok(r),
+                        Err(err) => {
+                            let chat_response = InvalidRequest {
+                                reason: format!("OpenAI Chat Error: {err}"),
+                            };
+                            Err(Message {
+                                comm_type: CommType::InvalidRequest,
+                                object: serde_json::to_string(&chat_response).unwrap(),
+                            })
+                        }
+                    },
+                )
+                .await
+                .unwrap();
+
+            let chat_response: (HashMap<String, String>, ChatRequestInfo) = match response_result {
+                Ok(response) => response,
+                Err(err) => return err,
+            };
+
             let mut result = "".to_string();
             result = format!("{result}Headers\n");
             for (k, v) in chat_response.0.iter() {
@@ -277,15 +289,16 @@ impl AppBackend {
             }
             eprintln!("process_chat_request 4");
 
-            let mut tokens: Vec<(String, u32)> = Vec::new();
-            tokens.push((
-                "prompt_tokens".to_string(),
-                chat_response.1.usage.prompt_tokens,
-            ));
-            tokens.push((
-                "completion_tokens".to_string(),
-                chat_response.1.usage.completion_tokens,
-            ));
+            let tokens: Vec<(String, u32)> = vec![
+                (
+                    "prompt_tokens".to_string(),
+                    chat_response.1.usage.prompt_tokens,
+                ),
+                (
+                    "completion_tokens".to_string(),
+                    chat_response.1.usage.completion_tokens,
+                ),
+            ];
             let response = chat_response.1.choices[0].message.content.clone();
             ChatResponse { tokens, response }
         };
