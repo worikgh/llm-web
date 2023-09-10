@@ -31,7 +31,6 @@ fn update_cost(document: &Document, total_cost: f64, this_cost: f64) {
     let cost_div = document.get_element_by_id("cost_div").unwrap();
     let cost_string = format!("Cost: {total_cost:.3}/{this_cost:.4}");
     cost_div.set_inner_html(cost_string.as_str());
-    set_status(document, cost_string.as_str());
 }
 /// A prompt has returned from the LLM.  Process it here
 fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
