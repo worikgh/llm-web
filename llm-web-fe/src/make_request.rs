@@ -17,7 +17,7 @@ pub fn make_request(message: Message, mut f: impl FnMut(Message) + 'static) -> R
         }
     };
     let uri = format!("/api/{api}");
-    let xhr = XmlHttpRequest::new().unwrap();
+    let xhr: XmlHttpRequest = XmlHttpRequest::new().unwrap();
     print_to_console_s(format!("make_request({message}). 1"));
     xhr.open_with_async("POST", uri.as_str(), true)?;
     xhr.set_request_header("Content-Type", "application/json")?;
