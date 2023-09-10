@@ -50,11 +50,11 @@ pub struct LoginResult {
 
 /// Check if a user is authorised with `password`.  If so create an
 /// entry in the session database and return a `LoginResult` object
-/// for them.  If they are ot authorised return None.
+/// for them.  If they are not authorised return None.
 pub async fn login(
     username: String,
     password: String,
-    sessions: Arc<Mutex<HashMap<Uuid, Session>>>,
+    sessions: Arc<Mutex<HashMap<String, Session>>>,
 ) -> io::Result<Option<LoginResult>> {
     // Process array of `AuthorisationRecord`
     let records: Vec<AuthorisationRecord> = get_records().await?;
@@ -62,6 +62,8 @@ pub async fn login(
     match records.iter().find(|&x| x.name == username) {
         Some(record) => {
             eprintln!("login({username}, {password}) Found");
+            // TODO: Is this forced unwrap OK?  What about perverse
+            // passwords?
             if verify(&password, &(record.password)).unwrap() {
                 eprintln!("login({username}, {password}) Verified");
                 // Successful login.
@@ -71,7 +73,7 @@ pub async fn login(
                 let uuid: Uuid = record.uuid;
                 let token = generate_token(&uuid, &expiry, &key);
                 sessions.lock().unwrap().insert(
-                    record.uuid,
+                    token.clone(),
                     Session {
                         uuid: record.uuid,
                         expire: expiry,
@@ -269,6 +271,7 @@ pub fn generate_token(uuid: &Uuid, expiry: &DateTime<Utc>, key: &Vec<u8>) -> Str
         .encode(encrypt(format!("{uuid}{expiry}").as_bytes(), key).expect("Encrypt a token"))
 }
 
+#[allow(dead_code)]
 pub fn decode_token(
     encoded_uuid_expiry: String,
     key: &Vec<u8>,
@@ -283,7 +286,7 @@ pub fn decode_token(
     let datetime_part = parts.1;
 
     let uuid = Uuid::parse_str(uuid_part)?;
-    let datetime = DateTime::<Utc>::from_utc(
+    let datetime = DateTime::<Utc>::from_naive_utc_and_offset(
         NaiveDateTime::parse_from_str(datetime_part, "%Y-%m-%d %H:%M:%S%.f %Z")?,
         Utc,
     );

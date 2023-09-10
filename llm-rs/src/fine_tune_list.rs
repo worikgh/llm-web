@@ -75,7 +75,7 @@ impl fmt::Display for File {
             self.filename,
             self.purpose,
             self.status,
-            DateTime::<Utc>::from_utc(
+            DateTime::<Utc>::from_naive_utc_and_offset(
                 NaiveDateTime::from_timestamp_opt(self.created_at, 0).unwrap(),
                 Utc,
             )
@@ -102,7 +102,7 @@ impl fmt::Display for FineTuneList {
                 format!(
                     "Q {} {} {}",
                     x.id,
-                    DateTime::<Utc>::from_utc(
+                    DateTime::<Utc>::from_naive_utc_and_offset(
                         NaiveDateTime::from_timestamp_opt(x.created_at, 0).unwrap(),
                         Utc,
                     ),

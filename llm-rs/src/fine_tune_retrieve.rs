@@ -55,11 +55,11 @@ impl Display for FineTuneRetrieve {
             f,
             "object: {}\nid: {}\norganization_id: {}\nmodel: {}\ncreated_at: {}\nupdated_at: {}\nstatus: {}",
             self.object, self.id, self.organization_id, self.model,
-            DateTime::<Utc>::from_utc(
+            DateTime::<Utc>::from_naive_utc_and_offset(
                 NaiveDateTime::from_timestamp_opt(self.created_at, 0).unwrap(),
                 Utc,
             ),
-            DateTime::<Utc>::from_utc(
+            DateTime::<Utc>::from_naive_utc_and_offset(
                 NaiveDateTime::from_timestamp_opt(self.updated_at, 0).unwrap(),
                 Utc,
             ), self.status
@@ -106,7 +106,7 @@ impl Display for FineTuneRetrieve {
                 event.level,
                 event.object,
                 event.message,
-                DateTime::<Utc>::from_utc(
+                DateTime::<Utc>::from_naive_utc_and_offset(
                     NaiveDateTime::from_timestamp_opt(event.created_at, 0).unwrap(),
                     Utc,
                 )
