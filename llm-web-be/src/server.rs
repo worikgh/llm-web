@@ -30,7 +30,6 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 use std::{env, fs, io};
-use uuid::Uuid;
 
 fn _error(err: String) -> io::Error {
     io::Error::new(io::ErrorKind::Other, err)
@@ -40,12 +39,12 @@ fn _error(err: String) -> io::Error {
 pub struct AppBackend {
     /// The front end logs in and starts a session.  Each session has
     /// a unique UUID that is used to index it
-    pub sessions: Arc<Mutex<HashMap<Uuid, Session>>>,
+    pub sessions: Arc<Mutex<HashMap<String, Session>>>,
 }
 
 impl AppBackend {
     pub fn new() -> Self {
-        let sessions = Arc::new(Mutex::new(HashMap::<Uuid, Session>::new()));
+        let sessions = Arc::new(Mutex::new(HashMap::<String, Session>::new()));
         Self { sessions }
     }
 
@@ -123,8 +122,8 @@ impl AppBackend {
     }
 
     /// Check that a request is valid.
-    fn valid_session(&self, uuid: &Uuid, token: &str) -> bool {
-        match self.sessions.lock().unwrap().get(uuid) {
+    fn valid_session(&self, token: &str) -> bool {
+        match self.sessions.lock().unwrap().get(token) {
             Some(session) => {
                 // Found a session.  That is a start
                 session.token.as_str() == token && session.expire > Utc::now()
@@ -143,11 +142,11 @@ impl AppBackend {
                 // Get the session
                 let uuid = logout_request.uuid;
                 let token = logout_request.token;
-                if !self.valid_session(&uuid, token.as_str()) {
+                if !self.valid_session(token.as_str()) {
                     Message::from(LogoutResponse { success: false })
                 } else {
                     // A valid session
-                    match self.sessions.lock().unwrap().remove(&uuid) {
+                    match self.sessions.lock().unwrap().remove(token.as_str()) {
                         Some(_) =>
                         // Was already logged in, but we know that
                         {
@@ -231,6 +230,17 @@ impl AppBackend {
             // Forced unwrap OK because comm_type is ChatPrompt
             let prompt: ChatPrompt =
                 serde_json::from_str(&message.object).expect("Should be a ChatPrompt");
+
+            // Must verify the request
+            if !self.valid_session(prompt.token.as_str()) {
+                let chat_response = InvalidRequest {
+                    reason: "Invalid session".to_string(),
+                };
+                return Message {
+                    comm_type: CommType::InvalidRequest,
+                    object: serde_json::to_string(&chat_response).unwrap(),
+                };
+            }
             let api_key = env::var("OPENAI_API_KEY").unwrap();
             // Put the conversation so far in here
             // = [Message { role, content }]
