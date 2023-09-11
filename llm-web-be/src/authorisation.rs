@@ -78,6 +78,7 @@ pub async fn login(
                         uuid: record.uuid,
                         expire: expiry,
                         token: token.clone(),
+                        credit: 0.0,
                     },
                 );
                 Ok(Some(LoginResult {

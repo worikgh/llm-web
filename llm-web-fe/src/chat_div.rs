@@ -27,14 +27,18 @@ use web_sys::{
 };
 
 /// Update the cost display
-fn update_cost(document: &Document, total_cost: f64, this_cost: f64) {
+fn update_cost(document: &Document, credit: f64, total_cost: f64, this_cost: f64) {
     let cost_div = document.get_element_by_id("cost_div").unwrap();
-    let cost_string = format!("Cost: {total_cost:.3}/{this_cost:.4}");
+    let cost_string = format!("{this_cost:.4}/{total_cost:.3}/{credit:.2}");
     cost_div.set_inner_html(cost_string.as_str());
 }
 /// A prompt has returned from the LLM.  Process it here
 fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
-    print_to_console("chat_request 1");
+    print_to_console_s(format!("chat_request 1: {chat_response:?}"));
+
+    // Save this to display it
+    let credit = chat_response.credit;
+
     let mut chat_state = ChatState::restore()?;
     let prompt = chat_state.prompt.clone().unwrap();
 
@@ -54,8 +58,7 @@ fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
     result_div.set_inner_html(chat_state.get_response_display().as_str());
     chat_state.store()?;
     print_to_console("chat_request 2");
-
-    update_cost(&document, total_cost, this_cost);
+    update_cost(&document, credit, total_cost, this_cost);
     Ok(())
 }
 
@@ -200,7 +203,7 @@ impl ChatState {
     }
 }
 
-/// Screen fo the `chat` model interface
+/// Screen for the `chat` model interface
 pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
     // Manage state
     print_to_console("chat_div 1");
@@ -301,7 +304,7 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         let mut chat_state = ChatState::restore().unwrap();
         chat_state.responses.clear();
         chat_state.store().unwrap();
-        update_cost(&document, 0.0, 0.0);
+        update_cost(&document, 0.0, 0.0, 0.0);
     }) as Box<dyn Fn()>);
     clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
     clear_conversation_closure.forget();

@@ -98,6 +98,9 @@ pub struct ChatPrompt {
 /// From llm-web-be -> llm-web-fe.  Response from LLM
 /// Has to send back all the information the front end needs
 pub struct ChatResponse {
+    // The remaining credit the user has
+    pub credit: f64,
+
     // For every chat response there is a (possibly zero) cost.  Not
     // contemplating a negative cost, but it is possible.
     pub cost: f64,

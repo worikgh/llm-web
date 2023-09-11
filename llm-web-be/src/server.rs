@@ -233,7 +233,7 @@ impl AppBackend {
             // Forced unwrap OK because comm_type is ChatPrompt
             let prompt: ChatPrompt =
                 serde_json::from_str(&message.object).expect("Should be a ChatPrompt");
-
+            let token = prompt.token.clone();
             // Must verify the request
             if !self.valid_session(prompt.token.as_str()) {
                 let chat_response = InvalidRequest {
@@ -293,7 +293,19 @@ impl AppBackend {
 
             let cost = Self::cost(chat_response.1.usage, chat_response.1.model.as_str());
             let response = chat_response.1.choices[0].message.content.clone();
-            ChatResponse { cost, response }
+            let credit =
+                if let Some(session) = self.sessions.lock().unwrap().get_mut(token.as_str()) {
+                    session.credit -= cost;
+                    session.credit
+                } else {
+                    0.0
+                };
+
+            ChatResponse {
+                cost,
+                response,
+                credit,
+            }
         };
 
         Message {
