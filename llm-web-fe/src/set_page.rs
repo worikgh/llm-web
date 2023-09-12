@@ -153,3 +153,10 @@ pub fn initialise_page() -> Result<(), JsValue> {
 
     Ok(())
 }
+
+/// Update the cost display
+pub fn update_cost(document: &Document, credit: f64, total_cost: f64, this_cost: f64) {
+    let cost_div = document.get_element_by_id("cost_div").unwrap();
+    let cost_string = format!("{this_cost:.4}/{total_cost:.3}/{credit:.2}");
+    cost_div.set_inner_html(cost_string.as_str());
+}

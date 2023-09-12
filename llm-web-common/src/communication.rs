@@ -44,6 +44,7 @@ pub struct LoginResponse {
     pub success: bool,
     pub uuid: Option<Uuid>,
     pub token: Option<String>,
+    pub credit: f64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -9,6 +9,7 @@ use crate::manipulate_css::add_css_rule;
 #[allow(unused_imports)]
 use crate::set_page::set_page;
 use crate::set_page::set_status;
+use crate::set_page::update_cost;
 use crate::utility::print_to_console;
 use crate::utility::print_to_console_s;
 #[allow(unused_imports)]
@@ -115,6 +116,7 @@ pub fn login_div(document: &Document) -> Result<Element, JsValue> {
                         let head = document.body().unwrap();
                         head.set_attribute("data.token", token.as_str()).unwrap();
                         set_page(chat_div).unwrap();
+                        update_cost(&document, lr.credit, 0.0, 0.0);
                     } else {
                         set_status(&document, "Login failed");
                         set_page(login_div).unwrap();

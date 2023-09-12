@@ -6,6 +6,7 @@ use crate::manipulate_css::get_css_rules;
 use crate::manipulate_css::set_css_rules;
 use crate::set_page::set_focus_on_element;
 use crate::set_page::set_status;
+use crate::set_page::update_cost;
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
@@ -26,12 +27,6 @@ use web_sys::{
     HtmlSelectElement,
 };
 
-/// Update the cost display
-fn update_cost(document: &Document, credit: f64, total_cost: f64, this_cost: f64) {
-    let cost_div = document.get_element_by_id("cost_div").unwrap();
-    let cost_string = format!("{this_cost:.4}/{total_cost:.3}/{credit:.2}");
-    cost_div.set_inner_html(cost_string.as_str());
-}
 /// A prompt has returned from the LLM.  Process it here
 fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
     print_to_console_s(format!("chat_request 1: {chat_response:?}"));

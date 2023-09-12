@@ -152,15 +152,26 @@ impl AppBackend {
                 };
                 eprintln!("Result: {:?}", login_result_option);
                 let lr = match login_result_option {
-                    Some(lr) => LoginResponse {
-                        success: true,
-                        uuid: Some(lr.uuid),
-                        token: Some(lr.token),
-                    },
+                    Some(lr) => {
+                        let credit = self
+                            .sessions
+                            .lock()
+                            .unwrap()
+                            .get(lr.token.as_str())
+                            .unwrap()
+                            .credit;
+                        LoginResponse {
+                            success: true,
+                            uuid: Some(lr.uuid),
+                            token: Some(lr.token),
+                            credit,
+                        }
+                    }
                     None => LoginResponse {
                         success: false,
                         uuid: None,
                         token: None,
+                        credit: 0.0,
                     },
                 };
                 Message {
