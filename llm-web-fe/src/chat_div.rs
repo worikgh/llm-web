@@ -56,6 +56,10 @@ fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
     // Get response area and update the response
     let result_div = document.get_element_by_id("response-div").unwrap();
     result_div.set_inner_html(chat_state.get_response_display().as_str());
+
+    // Store credit in chat_state so it is available for new conversations
+    chat_state.credit = credit;
+
     chat_state.store()?;
     print_to_console("chat_request 2");
     update_cost(&document, credit, total_cost, this_cost);
@@ -153,6 +157,7 @@ struct ChatState {
     // is received store the response and prompt together
     prompt: Option<String>,
     responses: Vec<(String, ChatResponse)>,
+    credit: f64,
 }
 
 impl ChatState {
@@ -188,6 +193,7 @@ impl ChatState {
         Ok(Self {
             responses: Vec::new(),
             prompt: None,
+            credit: 0.0,
         })
     }
 
@@ -303,8 +309,10 @@ pub fn chat_div(document: &Document) -> Result<Element, JsValue> {
         result_div.set_inner_html("");
         let mut chat_state = ChatState::restore().unwrap();
         chat_state.responses.clear();
+        let credit = chat_state.credit;
         chat_state.store().unwrap();
-        update_cost(&document, 0.0, 0.0, 0.0);
+
+        update_cost(&document, credit, 0.0, 0.0);
     }) as Box<dyn Fn()>);
     clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
     clear_conversation_closure.forget();
