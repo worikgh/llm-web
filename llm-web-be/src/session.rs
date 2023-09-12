@@ -1,4 +1,4 @@
-/// User Session
+/// User Session.  One is generated on login and deleted on log off or on expiry
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde::Serialize;

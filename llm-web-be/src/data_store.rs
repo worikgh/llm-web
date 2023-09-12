@@ -1,10 +1,4 @@
-/// Functions to implement
-// Each is `pub async` and they all lock the file for their duration
-// use io::Result;
-// * - add_user(username:&str, password:&str) -> Result<bool>
-// * - delete_user(username: &str) -> Result<bool>
-// * - get_user_records() -> Result<Vec<AuthorisationRecord>>
-// * - update_user(session: &Session) -> Result<()>
+/// The user data
 use crate::authorisation::UserRights;
 use crate::session::Session;
 // use std::fs::File;
@@ -36,10 +30,10 @@ use std::io::Write;
 use uuid::Uuid;
 const FILENAME: &str = "users.txt";
 
-// pub async fn save_user(session: Session) -> io::Result<()> {
-//     Ok(())
-// }
-
+/// This is the main gateway into the data store.  The data is in a
+/// JSON file, and only one process can access it at a time.  This
+/// returns a opened, read/write locked file handle.
+/// This is very simple.  
 fn get_locked_handle() -> io::Result<File> {
     let file = match OpenOptions::new()
         .write(true)
@@ -82,7 +76,7 @@ pub async fn delete_user(username: &str) -> io::Result<bool> {
 
         // Search for user record. If it is there delete it and over
         // write the user file
-        if let Some(pos) = records.iter().position(|x| x.name == username) {
+        if let Some(pos) = records.iter().position(|x| x.username == username) {
             records.remove(pos);
 
             let contents = serde_json::to_string(&records)?;
@@ -118,7 +112,7 @@ pub async fn add_user(username: &str, password: &str) -> io::Result<bool> {
         .to_vec();
 
     let auth_rec = AuthorisationRecord {
-        name: username.to_string(),
+        username: username.to_string(),
         level: UserRights::Chat,
         password: hashed_password,
         uuid: Uuid::new_v4(),
@@ -145,9 +139,11 @@ pub async fn add_user(username: &str, password: &str) -> io::Result<bool> {
             }
         };
 
-        if records.iter().any(|x| x.name == auth_rec.name) {
+        if records.iter().any(|x| x.username == auth_rec.username) {
             // Record exists
             // `false` means do not need to add user
+            // Do not overwrite an existing user
+            // Explicitly delete it first
             Ok(false)
         } else {
             records.push(auth_rec);
@@ -178,13 +174,24 @@ pub async fn get_user_records() -> io::Result<Vec<AuthorisationRecord>> {
         Ok(v) => v,
         Err(err) => panic!("{}: Failed to decode {}", err, s),
     };
-
     Ok(records)
 }
 
-/// Save the user data.  Onlythe credit in the first instance.
-/// TODO: Profile this.  Saving one user flag means saving all users
+#[allow(unused)]
+/// The AuthorisationRecord for a user.
+pub async fn get_user(uuid: Uuid) -> io::Result<AuthorisationRecord> {
+    Ok(get_user_records()
+        .await
+        .unwrap()
+        .iter()
+        .find(|&x| x.uuid == uuid)
+        .unwrap()
+        .clone())
+}
+
+/// Save the user data out of a Session  
 /// Precondition: User identified by `session` must exist
+#[allow(unused)]
 pub async fn update_user(session: &Session) -> io::Result<()> {
     let session = session.clone();
     let uuid = session.uuid;
@@ -224,4 +231,88 @@ pub async fn update_user(session: &Session) -> io::Result<()> {
         fw.write_all(contents.as_bytes())
     })
     .await?
+}
+
+#[cfg(test)]
+pub mod tests {
+
+    use super::*;
+    #[tokio::test]
+    async fn test_get_user_records() {
+        assert!(match get_user_records().await {
+            Ok(_) => true,
+            Err(err) => panic!("Error: {}, ", err),
+        });
+    }
+    #[tokio::test]
+    async fn test_user() {
+        use chrono::Utc;
+        let username = get_unique_user("test_user").await;
+        assert!(!get_user_records()
+            .await
+            .unwrap()
+            .iter()
+            .any(|x| x.username == username));
+        let password = "123";
+        let b: bool = add_user(username.as_str(), password).await.unwrap();
+        assert!(b, "Failed add_user({}, {})", username, password);
+        let uuid = get_user_records()
+            .await
+            .unwrap()
+            .iter()
+            .find(|&x| x.username == username)
+            .unwrap()
+            .uuid;
+        let auth_record = get_user(uuid).await.unwrap();
+        assert!(uuid == auth_record.uuid);
+        assert!(auth_record.level == UserRights::Chat);
+        assert!(auth_record.credit == 0.0);
+        // Test updating a user
+        let test_credit: f64 = 3.45;
+        let test_level = UserRights::Admin;
+        let session = Session {
+            uuid,
+            expire: Utc::now(),
+            token: "Not part of test".to_string(),
+            credit: test_credit, // Testing this
+            level: test_level,   // Testing this
+        };
+        update_user(&session).await.unwrap();
+        let auth_record = get_user(uuid).await.unwrap();
+        assert!(uuid == auth_record.uuid);
+        assert!(auth_record.level == test_level);
+        assert!(auth_record.credit == test_credit);
+
+        let b = delete_user(username.as_str()).await.unwrap();
+        assert!(b);
+        assert!(!get_user_records()
+            .await
+            .unwrap()
+            .iter()
+            .any(|x| x.username == username));
+    }
+    pub async fn get_unique_user(pfx: &str) -> String {
+        let user_list: Vec<String> = get_user_records()
+            .await
+            .unwrap()
+            .iter()
+            .map(|x| x.username.clone())
+            .collect();
+
+        let mut name_pfx = pfx.to_string();
+        let letters: Vec<char> = (b'a'..=b'z').map(char::from).collect();
+        let mut itr = letters.iter().peekable();
+        let mut itr2 = letters.iter();
+        let mut test_name: String;
+        loop {
+            test_name = format!("{name_pfx}_{}", itr.next().unwrap());
+            if !user_list.contains(&test_name) {
+                break;
+            }
+            if itr.peek().is_none() {
+                name_pfx = format!("{name_pfx}{}_", itr2.next().unwrap());
+            }
+        }
+        test_name
+    }
 }

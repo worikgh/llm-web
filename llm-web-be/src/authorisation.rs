@@ -13,7 +13,7 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 /// Hierarchical.  Admin has all rights.  Chat can chat, NoRights....
 pub enum UserRights {
     NoRights,
@@ -26,7 +26,7 @@ pub async fn users() -> io::Result<Vec<String>> {
     Ok(get_user_records()
         .await?
         .iter()
-        .map(|x| x.name.clone())
+        .map(|x| x.username.clone())
         .collect())
 }
 
@@ -49,7 +49,7 @@ pub async fn login(
     // Process array of `AuthorisationRecord`
     let records: Vec<AuthorisationRecord> = get_user_records().await?;
     eprintln!("login({username}, {password}, sessions)");
-    match records.iter().find(|&x| x.name == username) {
+    match records.iter().find(|&x| x.username == username) {
         Some(record) => {
             eprintln!("login({username}, {password}) Found");
             // TODO: Is this forced unwrap OK?  What about perverse
@@ -74,7 +74,7 @@ pub async fn login(
                     },
                 );
                 Ok(Some(LoginResult {
-                    rights: record.level.clone(),
+                    rights: record.level,
                     uuid,
                     token,
                 }))
@@ -96,10 +96,10 @@ pub async fn login(
 
 /// The data stored about a user.
 /// The `name`, and  `password` are supplied by the user
-/// The `uuid` is used to identify a user and is generated in
+/// The `uuid` is used to identify a user
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AuthorisationRecord {
-    pub name: String,
+    pub username: String,
     pub password: String,
     pub uuid: Uuid,
     pub level: UserRights,
@@ -107,8 +107,9 @@ pub struct AuthorisationRecord {
     pub key: Vec<u8>,
 }
 
-/// Handle tokens
-pub fn generate_token(uuid: &Uuid, expiry: &DateTime<Utc>, key: &Vec<u8>) -> String {
+/// Handle tokens.  Tokens are made from a uuid and session expiry
+/// time.  The uuid and expiry can be recovered.  (No use for that yet)
+pub fn generate_token(uuid: &Uuid, expiry: &DateTime<Utc>, key: &[u8]) -> String {
     general_purpose::STANDARD
         .encode(encrypt(format!("{uuid}{expiry}").as_bytes(), key).expect("Encrypt a token"))
 }
@@ -116,7 +117,7 @@ pub fn generate_token(uuid: &Uuid, expiry: &DateTime<Utc>, key: &Vec<u8>) -> Str
 #[allow(dead_code)]
 pub fn decode_token(
     encoded_uuid_expiry: String,
-    key: &Vec<u8>,
+    key: &[u8],
 ) -> Result<(Uuid, DateTime<Utc>), Box<dyn std::error::Error>> {
     let decoded_data = general_purpose::STANDARD.decode(encoded_uuid_expiry)?;
     let decrypted_data = decrypt(&decoded_data, key)?;
@@ -138,30 +139,15 @@ pub fn decode_token(
 
 #[cfg(test)]
 pub mod tests {
-    //use llm_web_common::communication::LoginRequest;
+    // //use llm_web_common::communication::LoginRequest;
 
     use super::*;
 
-    pub async fn get_unique_user(pfx: &str) -> String {
-        let user_list = users().await.unwrap();
-        let mut name_pfx = pfx.to_string();
-        let letters: Vec<char> = (b'a'..=b'z').map(char::from).collect();
-        let mut itr = letters.iter().peekable();
-        let mut itr2 = letters.iter();
-        let mut test_name: String;
-        loop {
-            test_name = format!("{name_pfx}_{}", itr.next().unwrap());
-            if !user_list.contains(&test_name) {
-                break;
-            }
-            if itr.peek().is_none() {
-                name_pfx = format!("{name_pfx}{}_", itr2.next().unwrap());
-            }
-        }
-        test_name
-    }
     #[tokio::test]
     async fn test_login() {
+        use crate::data_store::add_user;
+        use crate::data_store::delete_user;
+        use crate::data_store::tests::get_unique_user;
         let username = get_unique_user("authorisation::tests::test_login").await;
         let password = "123";
         let b: bool = add_user(username.as_str(), "123").await.unwrap();
@@ -178,24 +164,7 @@ pub mod tests {
         assert!(test);
         assert!(delete_user(username.as_str()).await.unwrap());
     }
-    #[tokio::test]
-    async fn add_delete_user() {
-        let test_name = get_unique_user("authorisation::tests::add_delete_user").await;
-        let b = add_user(test_name.as_str(), "123").await.unwrap();
-        eprintln!("Adding a user returns true: {b}");
-        assert!(b);
-        let b = add_user(test_name.as_str(), "123").await.unwrap();
-        eprintln!("Repeating adding a user returns false: {b}");
-        assert!(!b);
-
-        let b = delete_user(test_name.as_str()).await.unwrap();
-        eprintln!("Deleted record was found: {b}");
-        assert!(b);
-
-        let b = delete_user(test_name.as_str()).await.unwrap();
-        eprintln!("Repeating delete record returns false: {b}");
-        assert!(!b);
-    }
+    // #[tokio::test]
     #[test]
     fn token_coding() {
         let uuid = Uuid::new_v4();
