@@ -5,6 +5,7 @@
 
 use crate::authorisation::login;
 use crate::authorisation::LoginResult;
+use crate::data_store::update_user;
 use crate::session::Session;
 use chrono::Utc;
 use hyper::body;
@@ -201,6 +202,7 @@ impl AppBackend {
             let prompt: ChatPrompt =
                 serde_json::from_str(&message.object).expect("Should be a ChatPrompt");
             let token = prompt.token.clone();
+
             // Must verify the request
             if !self.valid_session(prompt.token.as_str()) {
                 let chat_response = InvalidRequest {
@@ -260,18 +262,21 @@ impl AppBackend {
 
             let cost = Self::cost(chat_response.1.usage, chat_response.1.model.as_str());
             let response = chat_response.1.choices[0].message.content.clone();
-            let credit =
-                if let Some(session) = self.sessions.lock().unwrap().get_mut(token.as_str()) {
-                    session.credit -= cost;
-                    session.credit
-                } else {
-                    0.0
-                };
+            let mut session = self
+                .sessions
+                .lock()
+                .unwrap()
+                .get_mut(token.as_str())
+                .unwrap()
+                .clone();
+
+            session.credit -= cost;
+            let _ = update_user(&session).await;
 
             ChatResponse {
                 cost,
                 response,
-                credit,
+                credit: session.credit,
             }
         };
 
@@ -420,131 +425,131 @@ impl Error for ServerError {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
-    // use crate::authorisation::tests::get_unique_user;
-    // use crate::data_store;
-    // use crate::data_store::delete_user;
-    // use data_store::add_user;
-    // use llm_web_common::communication::LoginRequest;
-    // use llm_web_common::communication::Message;
+    use super::*;
+    use crate::data_store;
+    use crate::data_store::delete_user;
+    use crate::data_store::tests::get_unique_user;
+    use data_store::add_user;
+    use llm_web_common::communication::LoginRequest;
+    use llm_web_common::communication::Message;
 
-    // fn make_request(inp: String) -> Result<Request<Body>, ServerError> {
-    //     // Box<dyn std::error::Error>> {
-    //     // Create a new Request with the given input as the body
-    //     let req = Request::builder()
-    //         .method("POST")
-    //         .uri("http://example.com/api/login")
-    //         .header("Content-Type", "application/json")
-    //         .body(Body::from(inp))?;
+    fn make_request(inp: String) -> Result<Request<Body>, ServerError> {
+        // Box<dyn std::error::Error>> {
+        // Create a new Request with the given input as the body
+        let req = Request::builder()
+            .method("POST")
+            .uri("http://example.com/api/login")
+            .header("Content-Type", "application/json")
+            .body(Body::from(inp))?;
 
-    //     Ok(req)
-    // }
-    // fn make_login_request(
-    //     username: String,
-    //     password: String,
-    // ) -> Result<Request<Body>, ServerError> {
-    //     // Only the path section of the URI is relevant
-    //     let login_request = LoginRequest { username, password };
-    //     let message = Message::from(login_request);
-    //     let message = serde_json::to_string(&message).unwrap();
-    //     make_request(message)
-    // }
+        Ok(req)
+    }
+    fn make_login_request(
+        username: String,
+        password: String,
+    ) -> Result<Request<Body>, ServerError> {
+        // Only the path section of the URI is relevant
+        let login_request = LoginRequest { username, password };
+        let message = Message::from(login_request);
+        let message = serde_json::to_string(&message).unwrap();
+        make_request(message)
+    }
 
-    // #[tokio::test]
-    // async fn login_fail() {
-    //     // Get a user that is not in the system, and check logging in as them fails
-    //     let username = get_unique_user("server::test::login_fail").await;
-    //     let password = "supersecret".to_string();
-    //     let lr = LoginRequest { username, password };
-    //     let msg = Message {
-    //         comm_type: CommType::LoginRequest,
-    //         object: serde_json::to_string(&lr).unwrap(),
-    //     };
-    //     let server = AppBackend::new();
-    //     let result = server.process_login(&msg).await;
-    //     eprintln!("result ({})", result,);
-    //     assert!(result.comm_type == CommType::LoginResponse);
+    #[tokio::test]
+    async fn login_fail() {
+        // Get a user that is not in the system, and check logging in as them fails
+        let username = get_unique_user("server::test::login_fail").await;
+        let password = "supersecret".to_string();
+        let lr = LoginRequest { username, password };
+        let msg = Message {
+            comm_type: CommType::LoginRequest,
+            object: serde_json::to_string(&lr).unwrap(),
+        };
+        let server = AppBackend::new();
+        let result = server.process_login(&msg).await;
+        eprintln!("result ({})", result,);
+        assert!(result.comm_type == CommType::LoginResponse);
 
-    //     let login_response: LoginResponse = serde_json::from_str(&result.object).unwrap();
-    //     assert!(!login_response.success);
-    // }
-    // #[tokio::test]
-    // async fn bad_message() {
-    //     // Check using incorrect message fails
-    //     let username = get_unique_user("server::test::bad_message").await;
-    //     let password = "supersecret".to_string();
-    //     let lr = LoginRequest { username, password };
-    //     let msg = Message {
-    //         comm_type: CommType::ChatPrompt,
-    //         object: serde_json::to_string(&lr).unwrap(),
-    //     };
-    //     let server = AppBackend::new();
-    //     let result = server.process_login(&msg).await;
-    //     eprintln!("result.comm_type ({})", result.comm_type,);
-    //     assert!(result.comm_type == CommType::InvalidRequest);
-    // }
+        let login_response: LoginResponse = serde_json::from_str(&result.object).unwrap();
+        assert!(!login_response.success);
+    }
+    #[tokio::test]
+    async fn bad_message() {
+        // Check using incorrect message fails
+        let username = get_unique_user("server::test::bad_message").await;
+        let password = "supersecret".to_string();
+        let lr = LoginRequest { username, password };
+        let msg = Message {
+            comm_type: CommType::ChatPrompt,
+            object: serde_json::to_string(&lr).unwrap(),
+        };
+        let server = AppBackend::new();
+        let result = server.process_login(&msg).await;
+        eprintln!("result.comm_type ({})", result.comm_type,);
+        assert!(result.comm_type == CommType::InvalidRequest);
+    }
 
-    // #[tokio::test]
-    // async fn server_test() {
-    //     // Server to test
-    //     let server = AppBackend::new();
+    #[tokio::test]
+    async fn server_test() {
+        // Server to test
+        let server = AppBackend::new();
 
-    //     // A user name and password to add
-    //     let username = get_unique_user("server::test::server_test").await;
-    //     let password = "password".to_string();
-    //     eprintln!("Adding user: {username}/{password}");
-    //     let b = add_user(username.as_str(), password.as_str())
-    //         .await
-    //         .unwrap();
-    //     eprintln!("Assert was a successful login {b}");
-    //     assert!(b);
+        // A user name and password to add
+        let username = get_unique_user("server::test::server_test").await;
+        let password = "password".to_string();
+        eprintln!("Adding user: {username}/{password}");
+        let b = add_user(username.as_str(), password.as_str())
+            .await
+            .unwrap();
+        eprintln!("Assert was a successful login {b}");
+        assert!(b);
 
-    //     // Log them in
-    //     let req: Request<Body> = make_login_request(username.clone(), password).unwrap();
-    //     eprintln!("req: {:?}", req);
-    //     let mut login_response_message = match server.process_request(req).await {
-    //         Ok(m) => m,
-    //         Err(err) => panic!("err: {}", err),
-    //     };
-    //     eprintln!("lrm: {:?}", login_response_message);
+        // Log them in
+        let req: Request<Body> = make_login_request(username.clone(), password).unwrap();
+        eprintln!("req: {:?}", req);
+        let mut login_response_message = match server.process_request(req).await {
+            Ok(m) => m,
+            Err(err) => panic!("err: {}", err),
+        };
+        eprintln!("lrm: {:?}", login_response_message);
 
-    //     let b = hyper::body::to_bytes(login_response_message.body_mut())
-    //         .await
-    //         .unwrap();
-    //     let body_text = String::from_utf8(b.to_vec()).unwrap();
-    //     eprintln!("body_text: {body_text}");
-    //     let login_response_message: Message = serde_json::from_str(body_text.as_str()).unwrap();
+        let b = hyper::body::to_bytes(login_response_message.body_mut())
+            .await
+            .unwrap();
+        let body_text = String::from_utf8(b.to_vec()).unwrap();
+        eprintln!("body_text: {body_text}");
+        let login_response_message: Message = serde_json::from_str(body_text.as_str()).unwrap();
 
-    //     // Test there was the correct response
-    //     eprintln!("Response type: {}", login_response_message.comm_type);
-    //     assert_eq!(login_response_message.comm_type, CommType::LoginResponse);
-    //     // Test there is at least one session
-    //     eprintln!("One session: {}", server.sessions.lock().unwrap().len());
-    //     assert_eq!(server.sessions.lock().unwrap().len(), 1);
+        // Test there was the correct response
+        eprintln!("Response type: {}", login_response_message.comm_type);
+        assert_eq!(login_response_message.comm_type, CommType::LoginResponse);
+        // Test there is at least one session
+        eprintln!("One session: {}", server.sessions.lock().unwrap().len());
+        assert_eq!(server.sessions.lock().unwrap().len(), 1);
 
-    //     let login_response: LoginResponse =
-    //         serde_json::from_str(login_response_message.object.as_str()).unwrap();
-    //     // Test successful login
-    //     eprintln!("Successful login: {}", login_response.success);
-    //     assert!(login_response.success);
+        let login_response: LoginResponse =
+            serde_json::from_str(login_response_message.object.as_str()).unwrap();
+        // Test successful login
+        eprintln!("Successful login: {}", login_response.success);
+        assert!(login_response.success);
 
-    //     // Log them out
-    //     let logout_request = LogoutRequest {
-    //         uuid: login_response.uuid.unwrap(),
-    //         token: login_response.token.unwrap(),
-    //     };
-    //     let logout_request_message = Message::from(logout_request);
-    //     let logout_response_message = server.process_logout(&logout_request_message).await;
-    //     eprintln!(
-    //         "Test correct message: {}",
-    //         logout_response_message.comm_type
-    //     );
-    //     assert_eq!(logout_response_message.comm_type, CommType::LogoutResponse);
-    //     // Test there is one session
-    //     eprintln!("Zerro sessions: {}", server.sessions.lock().unwrap().len());
-    //     assert_eq!(server.sessions.lock().unwrap().len(), 0);
+        // Log them out
+        let logout_request = LogoutRequest {
+            uuid: login_response.uuid.unwrap(),
+            token: login_response.token.unwrap(),
+        };
+        let logout_request_message = Message::from(logout_request);
+        let logout_response_message = server.process_logout(&logout_request_message).await;
+        eprintln!(
+            "Test correct message: {}",
+            logout_response_message.comm_type
+        );
+        assert_eq!(logout_response_message.comm_type, CommType::LogoutResponse);
+        // Test there is one session
+        eprintln!("Zerro sessions: {}", server.sessions.lock().unwrap().len());
+        assert_eq!(server.sessions.lock().unwrap().len(), 0);
 
-    //     // Clean up
-    //     delete_user(username.as_str()).await.unwrap();
-    // }
+        // Clean up
+        delete_user(username.as_str()).await.unwrap();
+    }
 }

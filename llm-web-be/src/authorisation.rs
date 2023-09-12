@@ -48,7 +48,7 @@ pub async fn login(
 ) -> io::Result<Option<LoginResult>> {
     // Process array of `AuthorisationRecord`
     let records: Vec<AuthorisationRecord> = get_user_records().await?;
-    eprintln!("login({username}, {password}, sessions)");
+
     match records.iter().find(|&x| x.username == username) {
         Some(record) => {
             eprintln!("login({username}, {password}) Found");
@@ -69,7 +69,7 @@ pub async fn login(
                         uuid: record.uuid,
                         expire: expiry,
                         token: token.clone(),
-                        credit: 0.0,
+                        credit: record.credit,
                         level,
                     },
                 );
