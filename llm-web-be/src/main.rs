@@ -9,6 +9,7 @@ mod authorisation;
 mod server;
 mod session;
 use std::env;
+mod data_store;
 //use async_std::task;
 
 #[allow(dead_code)]
@@ -35,7 +36,7 @@ async fn main() {
     match s1.as_str() {
         "delete_user" => {
             let username = args.next().expect(USAGE);
-            match authorisation::delete_user(username.as_str()).await {
+            match data_store::delete_user(username.as_str()).await {
                 Ok(b) => {
                     if b {
                         println!("Deleted: {username}");
@@ -49,7 +50,7 @@ async fn main() {
         "add_user" => {
             let username = args.next().expect(USAGE);
             let password: String = args.fold(String::new(), |a, b| format!("{a} {b}"));
-            match authorisation::add_user(username.as_str(), password.as_str()).await {
+            match data_store::add_user(username.as_str(), password.as_str()).await {
                 Ok(b) => {
                     if b {
                         println!("Added: {username}");

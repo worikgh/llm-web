@@ -454,10 +454,10 @@ impl Error for ServerError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::authorisation;
-    use crate::authorisation::delete_user;
     use crate::authorisation::tests::get_unique_user;
-    use authorisation::add_user;
+    use crate::data_store;
+    use crate::data_store::delete_user;
+    use data_store::add_user;
     use llm_web_common::communication::LoginRequest;
     use llm_web_common::communication::Message;
 

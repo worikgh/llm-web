@@ -1,30 +1,20 @@
+use crate::data_store::get_user_records;
 use crate::session::Session;
 use base64::{engine::general_purpose, Engine as _};
-use bcrypt::{hash, verify, DEFAULT_COST};
+use bcrypt::verify;
 use chrono::DateTime;
 use chrono::{Duration, NaiveDateTime, Utc};
-use fs2::FileExt;
-use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
 use simple_crypt::decrypt;
 use simple_crypt::encrypt;
 use std::collections::HashMap;
-use std::fs::File;
-use std::fs::OpenOptions;
 use std::io;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::BufWriter;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::Write;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
-// use std::time::{SystemTime, UNIX_EPOCH};
-const FILENAME: &str = "users.txt";
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+/// Hierarchical.  Admin has all rights.  Chat can chat, NoRights....
 pub enum UserRights {
     NoRights,
     Chat,
@@ -33,7 +23,7 @@ pub enum UserRights {
 
 /// Get a list of usernames
 pub async fn users() -> io::Result<Vec<String>> {
-    Ok(get_records()
+    Ok(get_user_records()
         .await?
         .iter()
         .map(|x| x.name.clone())
@@ -57,7 +47,7 @@ pub async fn login(
     sessions: Arc<Mutex<HashMap<String, Session>>>,
 ) -> io::Result<Option<LoginResult>> {
     // Process array of `AuthorisationRecord`
-    let records: Vec<AuthorisationRecord> = get_records().await?;
+    let records: Vec<AuthorisationRecord> = get_user_records().await?;
     eprintln!("login({username}, {password}, sessions)");
     match records.iter().find(|&x| x.name == username) {
         Some(record) => {
@@ -72,6 +62,7 @@ pub async fn login(
                 let key = record.key.clone();
                 let uuid: Uuid = record.uuid;
                 let token = generate_token(&uuid, &expiry, &key);
+                let level = record.level;
                 sessions.lock().unwrap().insert(
                     token.clone(),
                     Session {
@@ -79,6 +70,7 @@ pub async fn login(
                         expire: expiry,
                         token: token.clone(),
                         credit: 0.0,
+                        level,
                     },
                 );
                 Ok(Some(LoginResult {
@@ -102,168 +94,17 @@ pub async fn login(
     }
 }
 
-/// Add a user to the system.  Set them up with a record in the
-/// Authorisation DB with: User name, password, UUID, encryption key,
-/// and UserRights.  (The encryption key is used to encrypt thier
-/// session tokens).  Return false if already in the system.  True
-/// otherwise
-pub async fn add_user(username: &str, password: &str) -> io::Result<bool> {
-    eprintln!("add_user({username}, {password})");
-    // No white space in passwords
-    let hashed_password = hash(password.trim(), DEFAULT_COST).unwrap();
-    let rng = rand::thread_rng();
-    let key: Vec<u8> = rng
-        .sample_iter(rand::distributions::Alphanumeric)
-        .take(32)
-        .map(char::from)
-        .collect::<String>()
-        .as_bytes()
-        .to_vec();
-
-    let auth_rec = AuthorisationRecord {
-        name: username.to_string(),
-        level: UserRights::Chat,
-        password: hashed_password,
-        uuid: Uuid::new_v4(),
-        key,
-    };
-
-    tokio::task::spawn_blocking(move || -> io::Result<bool> {
-        let mut file = match OpenOptions::new()
-            .write(true)
-            .read(true)
-            .create(true)
-            .open(FILENAME)
-        {
-            Ok(f) => f,
-            Err(err) => panic!("{}: Filename: {}", err, FILENAME),
-        };
-        file.lock_exclusive()?;
-        file.seek(SeekFrom::Start(0))?;
-        let lines = BufReader::new(&file).lines();
-        let mut contents = String::new();
-        for line in lines {
-            contents += line?.as_str();
-        }
-
-        let mut records: Vec<AuthorisationRecord> = if contents.is_empty() {
-            // No users yet
-            vec![]
-        } else {
-            match serde_json::from_str(contents.as_str()) {
-                Ok(s) => s,
-                Err(err) => panic!("{}", err),
-            }
-        };
-
-        if records.iter().any(|x| x.name == auth_rec.name) {
-            // Record exists
-            // `false` means do not need to add user
-            Ok(false)
-        } else {
-            records.push(auth_rec);
-            let contents = serde_json::to_string(&records)?;
-            file.set_len(0)?;
-            file.seek(SeekFrom::Start(0))?;
-            let mut fw = BufWriter::new(file);
-            fw.write_all(contents.as_bytes())?;
-            Ok(true)
-        }
-    })
-    .await?
-    //    _add_user(auth_rec).await
-}
-
-/// Remove a users record
-/// Return
-/// * `true` if record deleted
-/// * `false if record not found
-pub async fn delete_user(username: &str) -> io::Result<bool> {
-    let username = username.to_string();
-    tokio::task::spawn_blocking(move || -> io::Result<bool> {
-        let mut file = match OpenOptions::new()
-            .write(true)
-            .read(true)
-            .create(true)
-            .open(FILENAME)
-        {
-            Ok(f) => f,
-            Err(err) => panic!("{}: Filename: {}", err, FILENAME),
-        };
-        file.lock_exclusive()?;
-        file.seek(SeekFrom::Start(0))?;
-
-        // Got file of data locked and ready to read
-        // Read it into `contents` and transform to records
-        let mut contents = String::new();
-        for line in BufReader::new(&file).lines() {
-            contents += line?.as_str();
-        }
-        let mut records: Vec<AuthorisationRecord> = if contents.is_empty() {
-            // No users yet
-            return Ok(false);
-        } else {
-            match serde_json::from_str(contents.as_str()) {
-                Ok(s) => s,
-                Err(err) => panic!("{}", err),
-            }
-        };
-
-        // Search for user record. If it is there delete it and over
-        // write the user file
-        if let Some(pos) = records.iter().position(|x| x.name == username) {
-            records.remove(pos);
-
-            let contents = serde_json::to_string(&records)?;
-            file.set_len(0)?;
-            file.seek(SeekFrom::Start(0))?;
-            let mut fw = BufWriter::new(file);
-            fw.write_all(contents.as_bytes())?;
-            Ok(true)
-        } else {
-            // Not found
-            Ok(false)
-        }
-    })
-    .await?
-}
-
-/// Get all the authorisation records
-async fn get_records() -> io::Result<Vec<AuthorisationRecord>> {
-    let s = tokio::task::spawn_blocking(move || -> io::Result<String> {
-        let file = File::open(FILENAME)?;
-        file.lock_exclusive()?;
-        let lines = BufReader::new(file).lines();
-        let mut contents = String::new();
-        //while let Some(line) = lines.next() {
-        for line in lines {
-            contents += line?.as_str();
-        }
-        Ok(contents)
-    })
-    .await??;
-
-    if s.is_empty() {
-        return Ok(vec![]);
-    }
-    let records: Vec<AuthorisationRecord> = match serde_json::from_str(s.as_str()) {
-        Ok(v) => v,
-        Err(err) => panic!("{}: Failed to decode {}", err, s),
-    };
-
-    Ok(records)
-}
-
 /// The data stored about a user.
 /// The `name`, and  `password` are supplied by the user
 /// The `uuid` is used to identify a user and is generated in
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct AuthorisationRecord {
-    name: String,
-    password: String,
-    uuid: Uuid,
-    level: UserRights,
-    key: Vec<u8>,
+pub struct AuthorisationRecord {
+    pub name: String,
+    pub password: String,
+    pub uuid: Uuid,
+    pub level: UserRights,
+    pub credit: f64,
+    pub key: Vec<u8>,
 }
 
 /// Handle tokens
