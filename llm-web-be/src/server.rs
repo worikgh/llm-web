@@ -39,8 +39,8 @@ fn _error(err: String) -> io::Error {
 
 #[derive(Debug, Clone)]
 pub struct AppBackend {
-    /// The front end logs in and starts a session.  Each session has
-    /// a unique UUID that is used to index it
+    /// The front end logs in and starts a session.  Sessions are
+    /// indexed by the session token
     pub sessions: Arc<Mutex<HashMap<String, Session>>>,
 }
 
