@@ -51,8 +51,8 @@ fn process_chat_response(chat_response: ChatResponse) -> Result<(), JsValue> {
     // Get response area and update the response
     let result_div = document.get_element_by_id("response-div").unwrap();
     result_div.set_inner_html(chat_state.get_response_display().as_str());
-
-    // Store credit in chat_state so it is available for new conversations
+    result_div.set_scroll_top(result_div.scroll_height()); // Scroll to the bottom
+                                                           // Store credit in chat_state so it is available for new conversations
     chat_state.credit = credit;
 
     chat_state.store()?;
