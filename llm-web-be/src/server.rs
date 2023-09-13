@@ -341,6 +341,7 @@ impl AppBackend {
                 *response.status_mut() = StatusCode::NOT_FOUND;
             }
         };
+        eprintln!("process_request response: {response:?}");
         Ok(response)
     }
 
