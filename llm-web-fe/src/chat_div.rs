@@ -244,85 +244,7 @@ impl LlmWebPage for ChatDiv {
 
         prompt_div.append_child(&submit_button)?;
 
-        // The side_panel menu
-        let side_panel_div = document
-            .create_element("div")
-            .expect("Could not create DIV element");
-        side_panel_div.set_id("side-panel-div");
-
-        // Create the model selection tool
-        let select_element = document
-            .create_element("select")
-            .unwrap()
-            .dyn_into::<HtmlSelectElement>()
-            .unwrap();
-        select_element.set_id("model-chat");
-        let options = select_element.options();
-
-        options.add_with_html_option_element(&HtmlOptionElement::new_with_text_and_value(
-            "Gpt-3",
-            "gpt-3.5-turbo",
-        )?)?;
-
-        options.add_with_html_option_element(&HtmlOptionElement::new_with_text_and_value(
-            "Gpt-4", "gpt-4",
-        )?)?;
-        side_panel_div.append_child(&select_element)?;
-
-        // The clear response button
-        // Make a button that clears the responses
-        let clear_response = document
-            .create_element("button")
-            .unwrap()
-            .dyn_into::<HtmlButtonElement>()
-            .unwrap();
-        clear_response.set_inner_text("Clear Conversation");
-        clear_response.set_id("clear_response");
-        let ss = chats.clone();
-        let clear_conversation_closure = Closure::wrap(Box::new(move || {
-            let document = window()
-                .and_then(|win| win.document())
-                .expect("Failed to get document");
-            let result_div = document.get_element_by_id("response_div").unwrap();
-            result_div.set_inner_html("");
-            let s = ss.clone();
-            if let Ok(mut c) = s.lock() {
-                c.current_conversation = None;
-                let credit = c.credit;
-                update_cost_display(&document, credit, 0.0, 0.0);
-            };
-        }) as Box<dyn Fn()>);
-        clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
-        clear_conversation_closure.forget();
-        side_panel_div.append_child(&clear_response)?;
-
-        // Experimental button
-        let clear_style = document
-            .create_element("button")
-            .unwrap()
-            .dyn_into::<HtmlButtonElement>()
-            .unwrap();
-        clear_style.set_inner_text("Style Experiment");
-        clear_style.set_id("clear_style");
-        let resp_closure = Closure::wrap(Box::new(|| {
-            print_to_console("resp_closure 1");
-            let document = window()
-                .and_then(|win| win.document())
-                .expect("Failed to get document");
-            let mut cs_rules = get_css_rules(&document).unwrap();
-            cs_rules
-                .insert("#side-panel-div", "background-color", "aliceblue")
-                .unwrap();
-            clear_css(&document).unwrap();
-            print_to_console("resp_closure 2");
-
-            set_css_rules(&document, &cs_rules).unwrap();
-            print_to_console("resp_closure 3");
-        }) as Box<dyn Fn()>);
-        clear_style.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));
-        resp_closure.forget();
-        side_panel_div.append_child(&clear_style)?;
-
+        let side_panel_div = make_side_panel(document, chats.clone())?;
         // Put the page together
         chat_div.append_child(&conversation_div).unwrap();
         chat_div.append_child(&prompt_div).unwrap();
@@ -471,6 +393,89 @@ impl LlmWebPage for ChatDiv {
 
         Ok(chat_div)
     }
+}
+
+/// Create the side panel
+fn make_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<Element, JsValue> {
+    // The side_panel menu
+    let side_panel_div = document
+        .create_element("div")
+        .expect("Could not create DIV element");
+    side_panel_div.set_id("side-panel-div");
+
+    // Create the model selection tool
+    let select_element = document
+        .create_element("select")
+        .unwrap()
+        .dyn_into::<HtmlSelectElement>()
+        .unwrap();
+    select_element.set_id("model-chat");
+    let options = select_element.options();
+
+    options.add_with_html_option_element(&HtmlOptionElement::new_with_text_and_value(
+        "Gpt-3",
+        "gpt-3.5-turbo",
+    )?)?;
+
+    options.add_with_html_option_element(&HtmlOptionElement::new_with_text_and_value(
+        "Gpt-4", "gpt-4",
+    )?)?;
+    side_panel_div.append_child(&select_element)?;
+
+    // The clear response button
+    // Make a button that clears the responses
+    let clear_response = document
+        .create_element("button")
+        .unwrap()
+        .dyn_into::<HtmlButtonElement>()
+        .unwrap();
+    clear_response.set_inner_text("Clear Conversation");
+    clear_response.set_id("clear_response");
+    let ss = chats.clone();
+    let clear_conversation_closure = Closure::wrap(Box::new(move || {
+        let document = window()
+            .and_then(|win| win.document())
+            .expect("Failed to get document");
+        let result_div = document.get_element_by_id("response_div").unwrap();
+        result_div.set_inner_html("");
+        let s = ss.clone();
+        if let Ok(mut c) = s.lock() {
+            c.current_conversation = None;
+            let credit = c.credit;
+            update_cost_display(&document, credit, 0.0, 0.0);
+        };
+    }) as Box<dyn Fn()>);
+    clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
+    clear_conversation_closure.forget();
+    side_panel_div.append_child(&clear_response)?;
+
+    // Experimental button
+    let clear_style = document
+        .create_element("button")
+        .unwrap()
+        .dyn_into::<HtmlButtonElement>()
+        .unwrap();
+    clear_style.set_inner_text("Style Experiment");
+    clear_style.set_id("clear_style");
+    let resp_closure = Closure::wrap(Box::new(|| {
+        print_to_console("resp_closure 1");
+        let document = window()
+            .and_then(|win| win.document())
+            .expect("Failed to get document");
+        let mut cs_rules = get_css_rules(&document).unwrap();
+        cs_rules
+            .insert("#side-panel-div", "background-color", "aliceblue")
+            .unwrap();
+        clear_css(&document).unwrap();
+        print_to_console("resp_closure 2");
+
+        set_css_rules(&document, &cs_rules).unwrap();
+        print_to_console("resp_closure 3");
+    }) as Box<dyn Fn()>);
+    clear_style.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));
+    resp_closure.forget();
+    side_panel_div.append_child(&clear_style)?;
+    Ok(side_panel_div)
 }
 
 /// Called to construct the messages for a request.  Each interaction
