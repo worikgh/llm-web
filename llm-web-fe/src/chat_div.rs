@@ -358,12 +358,7 @@ impl LlmWebPage for ChatDiv {
             "grid-row",
             format!("{prompt_t} / span {prompt_h}"),
         )?;
-        add_css_rule(
-            document,
-            "#prompt_div",
-            "border",
-            "thick double #ff00ff".to_string(),
-        )?;
+        add_css_rule(document, "#prompt_div", "border", "1px solid black")?;
         add_css_rule(document, "#prompt_div", "display", "flex")?;
         add_css_rule(document, "#prompt_input", "flex-grow", "1")?;
 
@@ -379,12 +374,7 @@ impl LlmWebPage for ChatDiv {
             "grid-row",
             format!("{side_panel_t} / span {side_panel_h}"),
         )?;
-        add_css_rule(
-            document,
-            "#side-panel-div",
-            "border",
-            "thick double #ffff00".to_string(),
-        )?;
+        add_css_rule(document, "#side-panel-div", "border", "1px solid black")?;
 
         // Pad the button to the left
         add_css_rule(document, "#chat-submit", "margin-left", "1em")?;
