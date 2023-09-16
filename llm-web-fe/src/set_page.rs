@@ -1,4 +1,7 @@
+use crate::chat_div::ChatDiv;
 use crate::filters::filter_html;
+use crate::llm_webpage::LlmWebPage;
+use crate::login_div::LoginDiv;
 use crate::manipulate_css::add_css_rule;
 #[allow(unused_imports)]
 use crate::utility::print_to_console;
@@ -6,20 +9,27 @@ use crate::utility::print_to_console;
 use crate::utility::print_to_console_s;
 use wasm_bindgen::prelude::*;
 use web_sys::window;
-use web_sys::{Document, Element, HtmlElement};
+use web_sys::{Document, HtmlElement};
 const MAIN_DIV_NAME: &str = "main_body";
 
+pub enum Pages {
+    ChatDiv,
+    LoginDiv,
+}
 /// `set_page(f)`: Display a page.  `f` is the function that builds
 /// the page to display.
 /// Structure of the page
-pub fn set_page(f: impl Fn(&Document) -> Result<Element, JsValue>) -> Result<(), JsValue> {
+pub fn set_page(page: Pages) -> Result<(), JsValue> {
     // Get the main document
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
     let body = document.body().expect("Could not access document.body");
-    let e = f(&document)?;
 
+    let e = match page {
+        Pages::ChatDiv => ChatDiv::initialise_page(&document)?,
+        Pages::LoginDiv => LoginDiv::initialise_page(&document)?,
+    };
     if let Some(main_body) = document.get_element_by_id(MAIN_DIV_NAME) {
         main_body.set_inner_html("");
         main_body.append_child(&e)?;
@@ -155,7 +165,7 @@ pub fn initialise_page() -> Result<(), JsValue> {
 }
 
 /// Update the cost display
-pub fn update_cost(document: &Document, credit: f64, total_cost: f64, this_cost: f64) {
+pub fn update_cost_display(document: &Document, credit: f64, total_cost: f64, this_cost: f64) {
     let cost_div = document.get_element_by_id("cost_div").unwrap();
     let cost_string = format!("{this_cost:.4}/{total_cost:.3}/{credit:.2}");
     cost_div.set_inner_html(cost_string.as_str());
