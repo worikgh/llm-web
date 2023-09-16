@@ -7,7 +7,10 @@ use wasm_bindgen::prelude::*;
 use web_sys::XmlHttpRequest;
 /// `message` is the data to send to back end
 /// `f` is the function to call with the response.  It will call `set_page`
-pub fn make_request(message: Message, mut f: impl FnMut(Message) + 'static) -> Result<(), JsValue> {
+pub fn make_request(
+    message: Message,
+    mut f: impl FnMut(Message) + 'static,
+) -> Result<Rc<RefCell<XmlHttpRequest>>, JsValue> {
     let api = match message.comm_type {
         CommType::LoginRequest => "login",
         CommType::ChatPrompt => "chat",
@@ -47,5 +50,5 @@ pub fn make_request(message: Message, mut f: impl FnMut(Message) + 'static) -> R
         .send_with_opt_u8_array(Some(message_str.as_str().as_bytes()))
         .unwrap();
 
-    Ok(())
+    Ok(xhr)
 }

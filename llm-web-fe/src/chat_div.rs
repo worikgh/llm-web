@@ -11,6 +11,8 @@ use crate::set_page::update_cost_display;
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
+use std::cell::RefCell;
+use std::rc::Rc;
 //use gloo::dialogs::prompt;
 use gloo_events::EventListener;
 use llm_web_common::communication::ChatPrompt;
@@ -24,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use web_sys::KeyboardEvent;
+use web_sys::XmlHttpRequest;
 
 use wasm_bindgen::prelude::*;
 use web_sys::{
@@ -37,6 +40,8 @@ use web_sys::{
 struct Conversation {
     prompt: Option<String>,
     responses: Vec<(String, ChatResponse)>,
+    #[serde(skip_serializing, skip_deserializing)]
+    request: Option<Rc<RefCell<XmlHttpRequest>>>,
 }
 
 impl Conversation {
@@ -44,6 +49,7 @@ impl Conversation {
         Self {
             prompt: None,
             responses: Vec::new(),
+            request: None,
         }
     }
     /// Get a display to put in response area.  Transform the text
@@ -659,8 +665,14 @@ fn chat_submit_cb(chats: Arc<Mutex<Chats>>) {
     let message: Message = Message::from(chat_prompt);
     print_to_console("chat_submit 2 submit: calling make_request");
     let conversation_collection = chats.clone();
-    make_request(message, move |message: Message| {
+    let xhr = make_request(message, move |message: Message| {
         make_request_cb(message, conversation_collection.clone())
     })
     .unwrap();
+    chats
+        .lock()
+        .unwrap()
+        .get_current_conversation_mut()
+        .unwrap()
+        .request = Some(xhr);
 }

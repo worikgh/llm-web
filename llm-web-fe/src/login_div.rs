@@ -130,7 +130,7 @@ impl LlmWebPage for LoginDiv {
                 };
             };
             match make_request(login_message, cb) {
-                Ok(()) => (),
+                Ok(_) => (),
                 Err(err) => panic!("{:?}", err),
             };
         });
