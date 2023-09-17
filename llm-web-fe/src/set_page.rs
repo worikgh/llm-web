@@ -34,9 +34,7 @@ pub fn set_page(page: Pages) -> Result<(), JsValue> {
         main_body.set_inner_html("");
         main_body.append_child(&e)?;
         body.append_child(&main_body)?;
-        print_to_console("Setting prompt-input as focus");
         set_focus_on_element(&document, "prompt-input");
-        print_to_console("Setted prompt-input as focus");
     } else {
         print_to_console("No `main_body` in page.  Has not been initialised");
         panic!("Died");
