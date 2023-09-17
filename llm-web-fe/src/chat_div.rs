@@ -11,6 +11,7 @@ use crate::set_page::update_cost_display;
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
+use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::rc::Rc;
 //use gloo::dialogs::prompt;
@@ -26,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use web_sys::KeyboardEvent;
-use web_sys::XmlHttpRequest;
+use web_sys::{Event, XmlHttpRequest};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{
@@ -65,6 +66,18 @@ impl Conversation {
             result = format!("{result}<br/><span class='prompt'>{prompt}</span><br/><span class='response'>{respone}</span>",);
         }
         result
+    }
+
+    /// Get the label to put on this conversation.  The text to
+    /// display is taken from the first prompt for the conversation.
+    /// It is hard to know what to do here.  Perhaps a method for the
+    /// user to name conversations?
+    fn get_label(&self) -> String {
+        if self.responses.is_empty() {
+            "Empty conversation".to_string()
+        } else {
+            self.responses.first().unwrap().0.clone()
+        }
     }
 }
 
@@ -129,14 +142,9 @@ impl Chats {
         // 2. The `prompt` is not None in current conversation
         print_to_console("update_current_conversation 1 ");
         let conversation = self.get_current_conversation_mut().unwrap();
-        print_to_console_s(format!(
-            "update_current_conversation 1.1 conversation: {conversation:?}"
-        ));
         let prompt: String = conversation.prompt.as_ref().unwrap().clone();
-        print_to_console("update_current_conversation 1.2 ");
         conversation.prompt = None;
         conversation.responses.push((prompt, response));
-        print_to_console("update_current_conversation 2");
         Ok(())
     }
 
@@ -385,9 +393,22 @@ impl LlmWebPage for ChatDiv {
     }
 }
 
+/// Remake the side panel
+fn remake_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<(), JsValue> {
+    let new_side_panel_div = make_side_panel(document, chats.clone())?;
+    let old_side_panel = document
+        .get_element_by_id("side-panel-div")
+        .ok_or_else(|| JsValue::from_str("Failed to get side panel."))?;
+    let parent = old_side_panel
+        .parent_node()
+        .ok_or_else(|| JsValue::from_str("Failed to find parent node."))?;
+    parent.replace_child(&new_side_panel_div, &old_side_panel)?;
+    Ok(())
+}
 /// Create the side panel
 fn make_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<Element, JsValue> {
     // The side_panel menu
+    print_to_console("make_side_panel 1");
     let side_panel_div = document
         .create_element("div")
         .expect("Could not create DIV element");
@@ -465,7 +486,89 @@ fn make_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<Elem
     clear_style.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));
     resp_closure.forget();
     side_panel_div.append_child(&clear_style)?;
+
+    let conversation_list = make_conversation_list(document, chats.clone())?;
+    side_panel_div.append_child(&conversation_list)?;
+    // Display the conversations
     Ok(side_panel_div)
+}
+
+/// Make a list of conversations for the side panel
+fn make_conversation_list(
+    document: &Document,
+    arc_chats: Arc<Mutex<Chats>>,
+) -> Result<Element, JsValue> {
+    print_to_console("make_conversation_list 1");
+    let conversation_list_div = document.create_element("div")?;
+    let ul = document.create_element("ul")?;
+    conversation_list_div.append_child(&ul)?;
+    let chats = arc_chats.lock().unwrap();
+    let conversations = &chats.conversations;
+    for (key, conversation) in conversations.iter() {
+        print_to_console("make_conversation_list 1.1");
+        // Each conversation has an element in this list
+        let li = document.create_element("li")?;
+
+        // Is this converstion active?
+        let active = conversation.prompt.is_some();
+
+        // Is this the currentconversation?
+        let current = match chats.current_conversation {
+            Some(c) => c == *key,
+            None => false,
+        };
+
+        // The text to display is taken from the first prompt for the
+        // conversation.  It is hard to know what to do here.  Perhaps
+        // a method for the user to name conversations?
+        let text_element = document.create_element("input")?;
+        let label = conversation.get_label();
+        text_element.set_attribute("value", label.as_str())?;
+        li.append_child(&text_element)?;
+
+        // A radio button The current conversation is selected.
+        // Changing teh selection will change the current
+        // conversation.
+        let current_radio = document.create_element("input")?;
+        current_radio.set_attribute("type", "radio")?;
+        current_radio.set_attribute("name", "conversation_radio_buttons")?;
+        current_radio.set_id(format!("conversation_radio_{key}").as_str());
+        if current {
+            current_radio.set_attribute("checked", "")?;
+        }
+        li.append_child(&current_radio)?;
+
+        // If this is active create a button to cancel it
+        if active {
+            let cancel_button: HtmlButtonElement = document
+                .create_element("button")
+                .map_err(|err| format!("Error creating button element: {:?}", err))?
+                .dyn_into::<HtmlButtonElement>()
+                .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
+            cancel_button.set_inner_text("cancel");
+            cancel_button.set_id(format!("cancel_request_{key}").as_str());
+            li.append_child(&cancel_button)?;
+            let arc_chats = arc_chats.clone();
+
+            let event_handler = Closure::wrap(Box::new(move |_event: Event| {
+                match arc_chats.lock() {
+                    Ok(chats) => {
+                        let cc = chats
+                            .conversations
+                            .get(chats.current_conversation.as_ref().unwrap())
+                            .unwrap();
+                        cc.request.borrow().as_ref().unwrap();
+                    }
+                    Err(err) => panic!("Cannot get XmlHttpRequest: {}", err),
+                };
+            }) as Box<dyn FnMut(_)>);
+            cancel_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
+        }
+        ul.append_child(&li)?;
+    }
+
+    print_to_console("make_conversation_list 1");
+    Ok(conversation_list_div)
 }
 
 /// Called to construct the messages for a request.  Each interaction
@@ -532,7 +635,6 @@ fn process_chat_response(
     let credit = chat_response.credit;
 
     let mut cas = chats.lock().unwrap();
-    print_to_console("process_chat_request 1.2: ");
 
     // A new round to be added to the current conversation
     //cas.update_current_conversation(chat_response)?;
@@ -547,29 +649,22 @@ fn process_chat_response(
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
-    print_to_console("process_chat_request 1.5 ");
 
     // Get response area and update the response
     let result_div = document.get_element_by_id("response_div").unwrap();
-    print_to_console("process_chat_request 1.6 ");
     cas.update_current_conversation(chat_response)?;
     let display: String = if let Some(c) = cas.get_current_conversation() {
         let s = c.get_response_display();
-        print_to_console_s(format!("process_chat_request 1.6.1 s: {s}"));
         s
     } else {
         result_div.set_inner_html("");
-        print_to_console("process_chat_request 1.6.2 ");
         "".to_string()
     };
-    print_to_console("process_chat_request 1.7 {display}");
     result_div.set_inner_html(display.as_str());
 
     result_div.set_scroll_top(result_div.scroll_height()); // Scroll to the bottom
-    print_to_console("process_chat_request 1.7.5 ");
-    // Store credit in chat_state so it is available for new conversations
+                                                           // Store credit in chat_state so it is available for new conversations
     cas.credit = credit;
-    print_to_console("process_chat_request 1.8 ");
 
     update_cost_display(&document, credit, total_cost, this_cost);
 
@@ -588,11 +683,10 @@ fn make_request_cb(message: Message, conversations: Arc<Mutex<Chats>>) {
     );
     match message.comm_type {
         CommType::ChatResponse => {
-            print_to_console_s(format!("make_request_cb 1.1: {message:?}"));
             let chat_response: ChatResponse =
                 serde_json::from_str(message.object.as_str()).unwrap();
-            print_to_console("make_request_cb 1.2");
             process_chat_response(chat_response, conversations.clone()).unwrap();
+            remake_side_panel(&document, conversations.clone()).unwrap();
         }
         CommType::InvalidRequest => {
             let inr: InvalidRequest =
@@ -670,4 +764,5 @@ fn chat_submit_cb(chats: Arc<Mutex<Chats>>) {
         .get_current_conversation_mut()
         .unwrap()
         .request = Some(xhr);
+    remake_side_panel(&document, chats.clone()).unwrap();
 }
