@@ -11,9 +11,6 @@ use crate::set_page::update_cost_display;
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
-use std::borrow::Borrow;
-use std::cell::RefCell;
-use std::rc::Rc;
 //use gloo::dialogs::prompt;
 use gloo_events::EventListener;
 use llm_web_common::communication::ChatPrompt;
@@ -42,7 +39,7 @@ struct Conversation {
     prompt: Option<String>,
     responses: Vec<(String, ChatResponse)>,
     #[serde(skip_serializing, skip_deserializing)]
-    request: Option<Rc<RefCell<XmlHttpRequest>>>,
+    request: Option<Arc<Mutex<XmlHttpRequest>>>,
 }
 
 impl Conversation {
@@ -140,7 +137,7 @@ impl Chats {
         // Preconditions:
         // 1. There is a current conversation
         // 2. The `prompt` is not None in current conversation
-        print_to_console("update_current_conversation 1 ");
+        // print_to_console("update_current_conversation 1 ");
         let conversation = self.get_current_conversation_mut().unwrap();
         let prompt: String = conversation.prompt.as_ref().unwrap().clone();
         conversation.prompt = None;
@@ -408,7 +405,7 @@ fn remake_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<()
 /// Create the side panel
 fn make_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<Element, JsValue> {
     // The side_panel menu
-    print_to_console("make_side_panel 1");
+    // print_to_console("make_side_panel 1");
     let side_panel_div = document
         .create_element("div")
         .expect("Could not create DIV element");
@@ -498,14 +495,14 @@ fn make_conversation_list(
     document: &Document,
     arc_chats: Arc<Mutex<Chats>>,
 ) -> Result<Element, JsValue> {
-    print_to_console("make_conversation_list 1");
+    // print_to_console("make_conversation_list 1");
     let conversation_list_div = document.create_element("div")?;
     let ul = document.create_element("ul")?;
     conversation_list_div.append_child(&ul)?;
     let chats = arc_chats.lock().unwrap();
     let conversations = &chats.conversations;
     for (key, conversation) in conversations.iter() {
-        print_to_console("make_conversation_list 1.1");
+        // print_to_console("make_conversation_list 1.1");
         // Each conversation has an element in this list
         let li = document.create_element("li")?;
 
@@ -548,26 +545,60 @@ fn make_conversation_list(
             cancel_button.set_inner_text("cancel");
             cancel_button.set_id(format!("cancel_request_{key}").as_str());
             li.append_child(&cancel_button)?;
-            let arc_chats = arc_chats.clone();
+            let arc_chats_event_handler_copy = arc_chats.clone();
 
             let event_handler = Closure::wrap(Box::new(move |_event: Event| {
-                match arc_chats.lock() {
+                print_to_console("cancel event handler 1");
+                match arc_chats_event_handler_copy.lock() {
                     Ok(chats) => {
-                        let cc = chats
+                        let cc = &chats
                             .conversations
                             .get(chats.current_conversation.as_ref().unwrap())
-                            .unwrap();
-                        cc.request.borrow().as_ref().unwrap();
+                            .unwrap()
+                            .request;
+                        // let q = cc.request.clone().unwrap();
+                        print_to_console_s(format!("cancel event_handler 1.5 cc: {cc:?}"));
+                        match cc.clone() {
+                            Some(cc) => {
+                                print_to_console("cancel event_handler 1.6");
+                                let cc = cc.lock();
+                                print_to_console("cancel event_handler 1.6.1");
+                                match cc {
+                                    Ok(cc) => {
+                                        print_to_console_s(format!(
+                                            "cancel event_handler 1.6.2 cc: {cc:?}"
+                                        ));
+                                        // let ab = (*(cc)).abort();
+                                        print_to_console("cancel event_handler 1.6.3 NO ABORT");
+                                        // match ab {
+                                        //     Ok(_) => print_to_console_s(format!(
+                                        //         "cancel event_handler 1.7 cc: {cc:?}"
+                                        //     )),
+                                        //     Err(err) => {
+                                        //         print_to_console_s(format!("Abort failed: {err:?}"))
+                                        //     }
+                                        // }
+                                    }
+                                    Err(err) => print_to_console_s(format!("Lock failed: {err:?}")),
+                                }
+                            }
+                            None => print_to_console("Cannot clone cc"),
+                        };
+                        print_to_console("cancel event_handler 1.6");
                     }
                     Err(err) => panic!("Cannot get XmlHttpRequest: {}", err),
                 };
+                print_to_console("cancel event handler 2");
             }) as Box<dyn FnMut(_)>);
+            print_to_console("Set cancel event handler");
+
             cancel_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
+            event_handler.forget();
         }
         ul.append_child(&li)?;
     }
 
-    print_to_console("make_conversation_list 1");
+    // print_to_console("make_conversation_list 1");
     Ok(conversation_list_div)
 }
 
@@ -668,7 +699,7 @@ fn process_chat_response(
 
     update_cost_display(&document, credit, total_cost, this_cost);
 
-    print_to_console("process_chat_response 2");
+    // print_to_console("process_chat_response 2");
     Ok(())
 }
 
