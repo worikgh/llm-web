@@ -39,6 +39,7 @@ features = [
 'MouseEvent',
 'Node',
 'NodeIterator',
+'ProgressEvent',
 'StyleSheet',
 'StyleSheetList',
 'Text', 

@@ -1,16 +1,16 @@
 /// Make a XmlHttpRequest to the backend.  
-use crate::utility::print_to_console_s;
+use crate::utility::{print_to_console, print_to_console_s};
 use llm_web_common::communication::{CommType, Message};
-use std::cell::RefCell;
-use std::rc::Rc;
 use wasm_bindgen::prelude::*;
-use web_sys::XmlHttpRequest;
+use web_sys::{ProgressEvent, XmlHttpRequest};
 /// `message` is the data to send to back end
 /// `f` is the function to call with the response.  It will call `set_page`
+
 pub fn make_request(
     message: Message,
     mut f: impl FnMut(Message) + 'static,
-) -> Result<Rc<RefCell<XmlHttpRequest>>, JsValue> {
+) -> Result<XmlHttpRequest, JsValue> {
+    // print_to_console_s(format!("make_request 1"));
     let api = match message.comm_type {
         CommType::LoginRequest => "login",
         CommType::ChatPrompt => "chat",
@@ -21,34 +21,36 @@ pub fn make_request(
     };
     let uri = format!("/api/{api}");
     let xhr: XmlHttpRequest = XmlHttpRequest::new().unwrap();
-    print_to_console_s(format!("make_request({message}). 1"));
-    xhr.open_with_async("POST", uri.as_str(), true)?;
+    xhr.open("POST", uri.as_str())?;
     xhr.set_request_header("Content-Type", "application/json")?;
-
-    let xhr = Rc::new(RefCell::new(xhr));
     let xhr_clone = xhr.clone();
-
-    let onreadystatechange_callback = Closure::wrap(Box::new(move || {
-        let xhr = xhr_clone.borrow();
-        if xhr.ready_state() == 4 && xhr.status().unwrap() == 200 {
-            let response = xhr.response_text().unwrap().unwrap();
+    let cb = Closure::wrap(Box::new(move |data: JsValue| {
+        match data.dyn_into::<ProgressEvent>() {
+            Ok(pe) => print_to_console_s(format!(
+                "xhr::onload callback 1 data: {pe:?}  {}/{}",
+                pe.loaded(),
+                pe.total()
+            )),
+            Err(err) => print_to_console_s(format!("xhr::onload callback 1 data: {err:?}")),
+        };
+        if xhr_clone.ready_state() == 4 && xhr_clone.status().unwrap() == 200 {
+            print_to_console("xhr::onload callback 1.1");
+            let response = xhr_clone.response_text().unwrap().unwrap();
             // Do something with response..
-            print_to_console_s(format!("State == 4: Response: {response}"));
             let message: Message = serde_json::from_str(response.as_str()).unwrap();
             f(message);
+            print_to_console("xhr::onload callback after callback ");
         }
-    }) as Box<dyn FnMut()>);
+    }) as Box<dyn FnMut(_)>);
 
-    xhr.borrow_mut()
-        .set_onreadystatechange(Some(onreadystatechange_callback.as_ref().unchecked_ref()));
-
-    // Save the closure to avoid it being dropped
-    onreadystatechange_callback.forget();
+    xhr.set_onload(Some(cb.as_ref().unchecked_ref()));
+    cb.forget();
 
     let message_str = serde_json::to_string(&message).unwrap();
-    xhr.borrow()
-        .send_with_opt_u8_array(Some(message_str.as_str().as_bytes()))
+    xhr.send_with_opt_u8_array(Some(message_str.as_str().as_bytes()))
         .unwrap();
+    // }
+    // print_to_console("make_request 2");
 
     Ok(xhr)
 }

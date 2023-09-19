@@ -39,7 +39,7 @@ struct Conversation {
     prompt: Option<String>,
     responses: Vec<(String, ChatResponse)>,
     #[serde(skip_serializing, skip_deserializing)]
-    request: Option<Arc<Mutex<XmlHttpRequest>>>,
+    request: Option<XmlHttpRequest>,
 }
 
 impl Conversation {
@@ -545,49 +545,10 @@ fn make_conversation_list(
             cancel_button.set_inner_text("cancel");
             cancel_button.set_id(format!("cancel_request_{key}").as_str());
             li.append_child(&cancel_button)?;
-            let arc_chats_event_handler_copy = arc_chats.clone();
+            // let arc_chats_event_handler_copy = arc_chats.clone();
 
             let event_handler = Closure::wrap(Box::new(move |_event: Event| {
                 print_to_console("cancel event handler 1");
-                match arc_chats_event_handler_copy.lock() {
-                    Ok(chats) => {
-                        let cc = &chats
-                            .conversations
-                            .get(chats.current_conversation.as_ref().unwrap())
-                            .unwrap()
-                            .request;
-                        // let q = cc.request.clone().unwrap();
-                        print_to_console_s(format!("cancel event_handler 1.5 cc: {cc:?}"));
-                        match cc.clone() {
-                            Some(cc) => {
-                                print_to_console("cancel event_handler 1.6");
-                                let cc = cc.lock();
-                                print_to_console("cancel event_handler 1.6.1");
-                                match cc {
-                                    Ok(cc) => {
-                                        print_to_console_s(format!(
-                                            "cancel event_handler 1.6.2 cc: {cc:?}"
-                                        ));
-                                        // let ab = (*(cc)).abort();
-                                        print_to_console("cancel event_handler 1.6.3 NO ABORT");
-                                        // match ab {
-                                        //     Ok(_) => print_to_console_s(format!(
-                                        //         "cancel event_handler 1.7 cc: {cc:?}"
-                                        //     )),
-                                        //     Err(err) => {
-                                        //         print_to_console_s(format!("Abort failed: {err:?}"))
-                                        //     }
-                                        // }
-                                    }
-                                    Err(err) => print_to_console_s(format!("Lock failed: {err:?}")),
-                                }
-                            }
-                            None => print_to_console("Cannot clone cc"),
-                        };
-                        print_to_console("cancel event_handler 1.6");
-                    }
-                    Err(err) => panic!("Cannot get XmlHttpRequest: {}", err),
-                };
                 print_to_console("cancel event handler 2");
             }) as Box<dyn FnMut(_)>);
             print_to_console("Set cancel event handler");
@@ -785,7 +746,7 @@ fn chat_submit_cb(chats: Arc<Mutex<Chats>>) {
     let message: Message = Message::from(chat_prompt);
     print_to_console("chat_submit 2 submit: calling make_request");
     let conversation_collection = chats.clone();
-    let xhr = make_request(message, move |message: Message| {
+    let arc_xhr = make_request(message, move |message: Message| {
         make_request_cb(message, conversation_collection.clone())
     })
     .unwrap();
@@ -794,6 +755,7 @@ fn chat_submit_cb(chats: Arc<Mutex<Chats>>) {
         .unwrap()
         .get_current_conversation_mut()
         .unwrap()
-        .request = Some(xhr);
+        .request = Some(arc_xhr);
+
     remake_side_panel(&document, chats.clone()).unwrap();
 }
