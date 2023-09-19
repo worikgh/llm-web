@@ -1,6 +1,8 @@
 /// Make a XmlHttpRequest to the backend.  
 use crate::utility::{print_to_console, print_to_console_s};
 use llm_web_common::communication::{CommType, Message};
+use std::cell::RefCell;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::{ProgressEvent, XmlHttpRequest};
 /// `message` is the data to send to back end
@@ -8,7 +10,8 @@ use web_sys::{ProgressEvent, XmlHttpRequest};
 
 pub fn make_request(
     message: Message,
-    mut f: impl FnMut(Message) + 'static,
+    mut callback_onload: impl FnMut(Message) + 'static,
+    callback_onabort: impl FnMut() + 'static,
 ) -> Result<XmlHttpRequest, JsValue> {
     // print_to_console_s(format!("make_request 1"));
     let api = match message.comm_type {
@@ -38,14 +41,22 @@ pub fn make_request(
             let response = xhr_clone.response_text().unwrap().unwrap();
             // Do something with response..
             let message: Message = serde_json::from_str(response.as_str()).unwrap();
-            f(message);
+            callback_onload(message);
             print_to_console("xhr::onload callback after callback ");
         }
     }) as Box<dyn FnMut(_)>);
 
     xhr.set_onload(Some(cb.as_ref().unchecked_ref()));
     cb.forget();
+    let callback_onabort = Rc::new(RefCell::new(callback_onabort));
 
+    let callback_onabort_clone = callback_onabort.clone();
+    let closure_onabort = Closure::wrap(Box::new(move || {
+        print_to_console("abort callback");
+        (*callback_onabort_clone.borrow_mut())();
+    }) as Box<dyn Fn()>);
+    xhr.set_onabort(Some(closure_onabort.as_ref().unchecked_ref()));
+    closure_onabort.forget();
     let message_str = serde_json::to_string(&message).unwrap();
     xhr.send_with_opt_u8_array(Some(message_str.as_str().as_bytes()))
         .unwrap();

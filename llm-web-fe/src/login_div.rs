@@ -129,9 +129,9 @@ impl LlmWebPage for LoginDiv {
                     _ => panic!("Expected LoginResponse got {}", msg),
                 };
             };
-            match make_request(login_message, cb) {
+            match make_request(login_message, cb, || ()) {
                 Ok(_) => (),
-                Err(err) => panic!("{:?}", err),
+                Err(err) => panic!("{:?}", err,),
             };
         });
         on_click.forget();

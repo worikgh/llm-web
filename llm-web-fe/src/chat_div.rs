@@ -11,7 +11,6 @@ use crate::set_page::update_cost_display;
 use crate::utility::print_to_console;
 #[allow(unused_imports)]
 use crate::utility::print_to_console_s;
-//use gloo::dialogs::prompt;
 use gloo_events::EventListener;
 use llm_web_common::communication::ChatPrompt;
 use llm_web_common::communication::ChatResponse;
@@ -243,9 +242,10 @@ impl LlmWebPage for ChatDiv {
         submit_button.set_inner_text("submit");
         submit_button.set_id("chat-submit");
         let cc = chats.clone();
-        let closure = Closure::wrap(Box::new(move || chat_submit_cb(cc.clone())) as Box<dyn Fn()>);
-        submit_button.set_onclick(Some(closure.as_ref().unchecked_ref()));
-        closure.forget();
+        let closure_onclick =
+            Closure::wrap(Box::new(move || chat_submit_cb(cc.clone())) as Box<dyn Fn()>);
+        submit_button.set_onclick(Some(closure_onclick.as_ref().unchecked_ref()));
+        closure_onclick.forget();
 
         prompt_div.append_child(&submit_button)?;
 
@@ -545,10 +545,26 @@ fn make_conversation_list(
             cancel_button.set_inner_text("cancel");
             cancel_button.set_id(format!("cancel_request_{key}").as_str());
             li.append_child(&cancel_button)?;
-            // let arc_chats_event_handler_copy = arc_chats.clone();
+            let arc_chats_event_handler_copy = arc_chats.clone();
 
             let event_handler = Closure::wrap(Box::new(move |_event: Event| {
-                print_to_console("cancel event handler 1");
+                print_to_console_s(format!("cancel event handler 1 event: {_event:?}"));
+                match arc_chats_event_handler_copy.lock() {
+                    Ok(m_chats) => {
+                        print_to_console_s(format!("Got: m_chats: {m_chats:?}"));
+                        print_to_console_s(format!(
+                            "Got: m_chats: {:?}",
+                            match m_chats.get_current_conversation() {
+                                Some(cc) => match &cc.request {
+                                    Some(xhr) => xhr.abort().unwrap(), //print_to_console_s(format!("Got xhr: {xhr:?}")),
+                                    None => print_to_console("Got no xhr"),
+                                },
+                                None => print_to_console("Got no cc"),
+                            }
+                        ));
+                    }
+                    Err(err) => print_to_console_s(format!("Got: m_chats: {err:?}")),
+                }
                 print_to_console("cancel event handler 2");
             }) as Box<dyn FnMut(_)>);
             print_to_console("Set cancel event handler");
@@ -664,6 +680,33 @@ fn process_chat_response(
     Ok(())
 }
 
+/// The callback for abort fetching a response
+fn abort_request_cb(conversations: Arc<Mutex<Chats>>) {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    set_status(&document, "Abort request");
+    print_to_console("abort_request_cb 1");
+    let conversations = conversations.clone();
+    print_to_console("abort_request_cb 1.0.0 a");
+    let l = conversations.lock();
+    print_to_console("abort_request_cb 1.0.0 b");
+    match l {
+        Ok(mut c) => {
+            if let Some(cc) = (*c).get_current_conversation_mut() {
+                print_to_console("abort_request_cb 1.0.1");
+                cc.prompt = None;
+                cc.request = None;
+                print_to_console("abort_request_cb 1.1");
+                remake_side_panel(&document, conversations.clone()).unwrap();
+                print_to_console("abort_request_cb 1.2");
+            }
+        }
+        Err(err) => print_to_console_s(format!("abort_request_cb: Failed {err:?}")),
+    };
+    print_to_console("abort_request_cb 2");
+}
+
 /// The callback for `make_request`
 fn make_request_cb(message: Message, conversations: Arc<Mutex<Chats>>) {
     let document = window()
@@ -745,17 +788,20 @@ fn chat_submit_cb(chats: Arc<Mutex<Chats>>) {
 
     let message: Message = Message::from(chat_prompt);
     print_to_console("chat_submit 2 submit: calling make_request");
-    let conversation_collection = chats.clone();
-    let arc_xhr = make_request(message, move |message: Message| {
-        make_request_cb(message, conversation_collection.clone())
-    })
+    let conversation_collection1 = chats.clone();
+    let conversation_collection2 = chats.clone();
+    let xhr = make_request(
+        message,
+        move |message: Message| make_request_cb(message, conversation_collection1.clone()),
+        move || abort_request_cb(conversation_collection2.clone()),
+    )
     .unwrap();
     chats
         .lock()
         .unwrap()
         .get_current_conversation_mut()
         .unwrap()
-        .request = Some(arc_xhr);
+        .request = Some(xhr);
 
     remake_side_panel(&document, chats.clone()).unwrap();
 }
