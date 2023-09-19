@@ -21,7 +21,9 @@ use llm_web_common::communication::LLMMessageType;
 use llm_web_common::communication::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+//use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::rc::Rc;
 use web_sys::KeyboardEvent;
 use web_sys::{Event, XmlHttpRequest};
 
@@ -188,7 +190,7 @@ impl LlmWebPage for ChatDiv {
     /// Screen for the `chat` model interface
     fn initialise_page(document: &Document) -> Result<Element, JsValue> {
         // Manage state of the conversations with the LLM
-        let chats = Arc::new(Mutex::new(Chats::new()?));
+        let chats = Rc::new(RefCell::new(Chats::new()?));
 
         // The container DIV that arranges the page
         let chat_div = document
@@ -391,8 +393,12 @@ impl LlmWebPage for ChatDiv {
 }
 
 /// Remake the side panel
-fn remake_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<(), JsValue> {
-    let new_side_panel_div = make_side_panel(document, chats.clone())?;
+fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+
+    let new_side_panel_div = make_side_panel(&document, chats.clone())?;
     let old_side_panel = document
         .get_element_by_id("side-panel-div")
         .ok_or_else(|| JsValue::from_str("Failed to get side panel."))?;
@@ -403,7 +409,7 @@ fn remake_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<()
     Ok(())
 }
 /// Create the side panel
-fn make_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<Element, JsValue> {
+fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Element, JsValue> {
     // The side_panel menu
     // print_to_console("make_side_panel 1");
     let side_panel_div = document
@@ -447,11 +453,20 @@ fn make_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<Elem
         let result_div = document.get_element_by_id("response_div").unwrap();
         result_div.set_inner_html("");
         let s = ss.clone();
-        if let Ok(mut c) = s.lock() {
-            c.current_conversation = None;
-            let credit = c.credit;
-            update_cost_display(&document, credit, 0.0, 0.0);
-        };
+        let credit: f64;
+        {
+            match s.try_borrow_mut() {
+                Ok(mut c) => {
+                    c.current_conversation = None;
+                    credit = c.credit;
+                }
+                Err(err) => {
+                    credit = f64::NAN;
+                    print_to_console_s(format!("Failed to borrow chats: {err:?}"));
+                }
+            };
+        }
+        update_cost_display(&document, credit, 0.0, 0.0);
     }) as Box<dyn Fn()>);
     clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
     clear_conversation_closure.forget();
@@ -466,7 +481,6 @@ fn make_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<Elem
     clear_style.set_inner_text("Style Experiment");
     clear_style.set_id("clear_style");
     let resp_closure = Closure::wrap(Box::new(|| {
-        print_to_console("resp_closure 1");
         let document = window()
             .and_then(|win| win.document())
             .expect("Failed to get document");
@@ -475,10 +489,7 @@ fn make_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<Elem
             .insert("#side-panel-div", "background-color", "aliceblue")
             .unwrap();
         clear_css(&document).unwrap();
-        print_to_console("resp_closure 2");
-
         set_css_rules(&document, &cs_rules).unwrap();
-        print_to_console("resp_closure 3");
     }) as Box<dyn Fn()>);
     clear_style.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));
     resp_closure.forget();
@@ -493,89 +504,100 @@ fn make_side_panel(document: &Document, chats: Arc<Mutex<Chats>>) -> Result<Elem
 /// Make a list of conversations for the side panel
 fn make_conversation_list(
     document: &Document,
-    arc_chats: Arc<Mutex<Chats>>,
+    arc_chats: Rc<RefCell<Chats>>,
 ) -> Result<Element, JsValue> {
-    // print_to_console("make_conversation_list 1");
     let conversation_list_div = document.create_element("div")?;
     let ul = document.create_element("ul")?;
     conversation_list_div.append_child(&ul)?;
-    let chats = arc_chats.lock().unwrap();
-    let conversations = &chats.conversations;
-    for (key, conversation) in conversations.iter() {
-        // print_to_console("make_conversation_list 1.1");
-        // Each conversation has an element in this list
-        let li = document.create_element("li")?;
 
-        // Is this converstion active?
-        let active = conversation.prompt.is_some();
+    match arc_chats.try_borrow() {
+        Err(err) => print_to_console_s(format!("Cannot borrow chats: {err:?}")),
+        Ok(chats) => {
+            let conversations: &HashMap<usize, Conversation> = &chats.conversations;
+            for (key, conversation) in conversations.iter() {
+                // Each conversation has an element in this list
+                let li = document.create_element("li")?;
 
-        // Is this the currentconversation?
-        let current = match chats.current_conversation {
-            Some(c) => c == *key,
-            None => false,
-        };
+                // Is this converstion active?
+                let active = conversation.prompt.is_some();
 
-        // The text to display is taken from the first prompt for the
-        // conversation.  It is hard to know what to do here.  Perhaps
-        // a method for the user to name conversations?
-        let text_element = document.create_element("input")?;
-        let label = conversation.get_label();
-        text_element.set_attribute("value", label.as_str())?;
-        li.append_child(&text_element)?;
+                // Is this the currentconversation?
+                let current = match chats.current_conversation {
+                    Some(c) => c == *key,
+                    None => false,
+                };
 
-        // A radio button The current conversation is selected.
-        // Changing teh selection will change the current
-        // conversation.
-        let current_radio = document.create_element("input")?;
-        current_radio.set_attribute("type", "radio")?;
-        current_radio.set_attribute("name", "conversation_radio_buttons")?;
-        current_radio.set_id(format!("conversation_radio_{key}").as_str());
-        if current {
-            current_radio.set_attribute("checked", "")?;
-        }
-        li.append_child(&current_radio)?;
+                // The text to display is taken from the first prompt for the
+                // conversation.  It is hard to know what to do here.  Perhaps
+                // a method for the user to name conversations?
+                let text_element = document.create_element("input")?;
+                let label = conversation.get_label();
+                text_element.set_attribute("value", label.as_str())?;
+                li.append_child(&text_element)?;
 
-        // If this is active create a button to cancel it
-        if active {
-            let cancel_button: HtmlButtonElement = document
-                .create_element("button")
-                .map_err(|err| format!("Error creating button element: {:?}", err))?
-                .dyn_into::<HtmlButtonElement>()
-                .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
-            cancel_button.set_inner_text("cancel");
-            cancel_button.set_id(format!("cancel_request_{key}").as_str());
-            li.append_child(&cancel_button)?;
-            let arc_chats_event_handler_copy = arc_chats.clone();
-
-            let event_handler = Closure::wrap(Box::new(move |_event: Event| {
-                print_to_console_s(format!("cancel event handler 1 event: {_event:?}"));
-                match arc_chats_event_handler_copy.lock() {
-                    Ok(m_chats) => {
-                        print_to_console_s(format!("Got: m_chats: {m_chats:?}"));
-                        print_to_console_s(format!(
-                            "Got: m_chats: {:?}",
-                            match m_chats.get_current_conversation() {
-                                Some(cc) => match &cc.request {
-                                    Some(xhr) => xhr.abort().unwrap(), //print_to_console_s(format!("Got xhr: {xhr:?}")),
-                                    None => print_to_console("Got no xhr"),
-                                },
-                                None => print_to_console("Got no cc"),
-                            }
-                        ));
-                    }
-                    Err(err) => print_to_console_s(format!("Got: m_chats: {err:?}")),
+                // A radio button The current conversation is selected.
+                // Changing teh selection will change the current
+                // conversation.
+                let current_radio = document.create_element("input")?;
+                current_radio.set_attribute("type", "radio")?;
+                current_radio.set_attribute("name", "conversation_radio_buttons")?;
+                current_radio.set_id(format!("conversation_radio_{key}").as_str());
+                if current {
+                    current_radio.set_attribute("checked", "")?;
                 }
-                print_to_console("cancel event handler 2");
-            }) as Box<dyn FnMut(_)>);
-            print_to_console("Set cancel event handler");
+                li.append_child(&current_radio)?;
 
-            cancel_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
-            event_handler.forget();
+                // If this is active create a button to cancel it
+                if active {
+                    let cancel_button: HtmlButtonElement = document
+                        .create_element("button")
+                        .map_err(|err| format!("Error creating button element: {:?}", err))?
+                        .dyn_into::<HtmlButtonElement>()
+                        .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
+                    cancel_button.set_inner_text("cancel");
+                    cancel_button.set_id(format!("cancel_request_{key}").as_str());
+                    li.append_child(&cancel_button)?;
+                    let arc_chats_event_handler_copy = arc_chats.clone();
+
+                    let event_handler = Closure::wrap(Box::new(move |_event: Event| {
+                        {
+                            match arc_chats_event_handler_copy.try_borrow_mut() {
+                                Ok(mut m_chats) => {
+                                    match m_chats.get_current_conversation() {
+                                        Some(cc) => match &cc.request {
+                                            Some(xhr) => {
+                                                xhr.abort().unwrap();
+                                                if let Some(cc) =
+                                                    m_chats.get_current_conversation_mut()
+                                                {
+                                                    cc.prompt = None;
+                                                    cc.request = None;
+                                                } else {
+                                                    print_to_console(
+                                                        "Cannot get current conversation for abort",
+                                                    );
+                                                }
+                                            }
+                                            None => print_to_console("Got no xhr"),
+                                        },
+                                        None => print_to_console("Got no cc"),
+                                    };
+                                }
+                                Err(err) => print_to_console_s(format!(
+                                    "Failed to borrow chats `make_conversation_list` {err:?}"
+                                )),
+                            };
+                        }
+                        remake_side_panel(arc_chats_event_handler_copy.clone()).unwrap();
+                    }) as Box<dyn FnMut(_)>);
+
+                    cancel_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
+                    event_handler.forget();
+                }
+                ul.append_child(&li)?;
+            }
         }
-        ul.append_child(&li)?;
-    }
-
-    // print_to_console("make_conversation_list 1");
+    };
     Ok(conversation_list_div)
 }
 
@@ -583,7 +605,7 @@ fn make_conversation_list(
 /// with the LLM includes a history of prevous interactions.  In the
 /// general case this is the history of the current conversation.
 /// `prompt` is the user's latest input
-fn build_messages(chats: Arc<Mutex<Chats>>, prompt: String) -> Vec<LLMMessage> {
+fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> {
     // `messages` is the historical response, build it here.
     let mut result: Vec<LLMMessage> = Vec::new();
 
@@ -594,64 +616,73 @@ fn build_messages(chats: Arc<Mutex<Chats>>, prompt: String) -> Vec<LLMMessage> {
         content: "You are a helpful assistant".to_string(),
     });
 
-    let mut chats = chats.lock().unwrap();
-    // Then the history of the conversation
-    match (*chats).get_current_conversation() {
-        Some(conversation) => {
-            for i in 0..conversation.responses.len() {
-                // chat_state.responses[i] has a prompt and a response.
-                let prompt: String = conversation.responses[i].0.clone();
-                let response: String = conversation.responses[i].1.response.clone();
+    match chats.try_borrow_mut() {
+        Err(err) => print_to_console_s(format!("Failed to borrow chats `build_messages` {err:?}")),
+        Ok(mut chats) => {
+            // Then the history of the conversation
+            match chats.get_current_conversation() {
+                Some(conversation) => {
+                    for i in 0..conversation.responses.len() {
+                        // chat_state.responses[i] has a prompt and a response.
+                        let prompt: String = conversation.responses[i].0.clone();
+                        let response: String = conversation.responses[i].1.response.clone();
 
-                result.push(LLMMessage {
-                    role: LLMMessageType::User,
-                    content: prompt,
-                });
-                result.push(LLMMessage {
-                    role: LLMMessageType::Assistant,
-                    content: response,
-                });
+                        result.push(LLMMessage {
+                            role: LLMMessageType::User,
+                            content: prompt,
+                        });
+                        result.push(LLMMessage {
+                            role: LLMMessageType::Assistant,
+                            content: response,
+                        });
+                    }
+                }
+                None => {
+                    // There is no current conversation.
+                    (*chats).initialise_current_conversation();
+                }
             }
+            // Finally the prompt
+            result.push(LLMMessage {
+                role: LLMMessageType::User,
+                content: prompt.clone(),
+            });
+            chats
+                .get_current_conversation_mut()
+                .as_mut()
+                .unwrap()
+                .prompt = Some(prompt);
         }
-        None => {
-            // There is no current conversation.
-            (*chats).initialise_current_conversation();
-        }
-    }
-    // Finally the prompt
-    result.push(LLMMessage {
-        role: LLMMessageType::User,
-        content: prompt.clone(),
-    });
-    chats
-        .get_current_conversation_mut()
-        .as_mut()
-        .unwrap()
-        .prompt = Some(prompt);
-
+    };
     result
 }
 
 /// A prompt has returned from the LLM.  Process it here
 fn process_chat_response(
     chat_response: ChatResponse,
-    chats: Arc<Mutex<Chats>>,
+    chats: Rc<RefCell<Chats>>,
 ) -> Result<(), JsValue> {
-    print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
+    //print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
 
     // Save this to display it
     let credit = chat_response.credit;
-
-    let mut cas = chats.lock().unwrap();
 
     // A new round to be added to the current conversation
     //cas.update_current_conversation(chat_response)?;
 
     // Get the cost
     let this_cost = chat_response.cost;
-    let total_cost = match cas.get_current_conversation() {
-        Some(c) => c.responses.iter().fold(0.0, |a, b| a + b.1.cost) + this_cost,
-        None => 0.0,
+    let total_cost = match chats.try_borrow() {
+        Err(err) => {
+            print_to_console_s(format!(
+                "Failed to borrow chats `process_chat_response`: {err:?}"
+            ));
+            f64::NAN
+        }
+        Ok(cas) => match cas.get_current_conversation() {
+            Some(c) => c.responses.iter().fold(0.0, |a, b| a + b.1.cost) + this_cost,
+            None => 0.0,
+        },
     };
 
     let document = window()
@@ -660,55 +691,41 @@ fn process_chat_response(
 
     // Get response area and update the response
     let result_div = document.get_element_by_id("response_div").unwrap();
-    cas.update_current_conversation(chat_response)?;
-    let display: String = if let Some(c) = cas.get_current_conversation() {
-        let s = c.get_response_display();
-        s
-    } else {
-        result_div.set_inner_html("");
-        "".to_string()
+    match chats.try_borrow_mut() {
+        Err(err) => print_to_console_s(format!(
+            "Failed to borrow chats `process_chat_response`: {err:?}"
+        )),
+        Ok(mut cas) => {
+            cas.credit = credit;
+            cas.update_current_conversation(chat_response)?;
+            let display: String = if let Some(c) = cas.get_current_conversation() {
+                c.get_response_display()
+            } else {
+                result_div.set_inner_html("");
+                "".to_string()
+            };
+            result_div.set_inner_html(display.as_str());
+        }
     };
-    result_div.set_inner_html(display.as_str());
 
     result_div.set_scroll_top(result_div.scroll_height()); // Scroll to the bottom
                                                            // Store credit in chat_state so it is available for new conversations
-    cas.credit = credit;
 
     update_cost_display(&document, credit, total_cost, this_cost);
 
-    // print_to_console("process_chat_response 2");
     Ok(())
 }
 
 /// The callback for abort fetching a response
-fn abort_request_cb(conversations: Arc<Mutex<Chats>>) {
+fn abort_request_cb() {
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
     set_status(&document, "Abort request");
-    print_to_console("abort_request_cb 1");
-    let conversations = conversations.clone();
-    print_to_console("abort_request_cb 1.0.0 a");
-    let l = conversations.lock();
-    print_to_console("abort_request_cb 1.0.0 b");
-    match l {
-        Ok(mut c) => {
-            if let Some(cc) = (*c).get_current_conversation_mut() {
-                print_to_console("abort_request_cb 1.0.1");
-                cc.prompt = None;
-                cc.request = None;
-                print_to_console("abort_request_cb 1.1");
-                remake_side_panel(&document, conversations.clone()).unwrap();
-                print_to_console("abort_request_cb 1.2");
-            }
-        }
-        Err(err) => print_to_console_s(format!("abort_request_cb: Failed {err:?}")),
-    };
-    print_to_console("abort_request_cb 2");
 }
 
 /// The callback for `make_request`
-fn make_request_cb(message: Message, conversations: Arc<Mutex<Chats>>) {
+fn make_request_cb(message: Message, conversations: Rc<RefCell<Chats>>) {
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
@@ -721,7 +738,7 @@ fn make_request_cb(message: Message, conversations: Arc<Mutex<Chats>>) {
             let chat_response: ChatResponse =
                 serde_json::from_str(message.object.as_str()).unwrap();
             process_chat_response(chat_response, conversations.clone()).unwrap();
-            remake_side_panel(&document, conversations.clone()).unwrap();
+            remake_side_panel(conversations.clone()).unwrap();
         }
         CommType::InvalidRequest => {
             let inr: InvalidRequest =
@@ -729,7 +746,7 @@ fn make_request_cb(message: Message, conversations: Arc<Mutex<Chats>>) {
             let document = window()
                 .and_then(|win| win.document())
                 .expect("Failed to get document");
-            print_to_console("chat_request ivr 1");
+
             let result_div = document.get_element_by_id("response_div").unwrap();
             result_div.set_inner_html(&inr.reason);
         }
@@ -738,8 +755,8 @@ fn make_request_cb(message: Message, conversations: Arc<Mutex<Chats>>) {
 }
 
 /// The callback for the submit button to send a prompt to the model.
-fn chat_submit_cb(chats: Arc<Mutex<Chats>>) {
-    print_to_console("chat_submit 1");
+fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
+    // print_to_console("chat_submit 1");
     // Get the contents of the prompt
     let document = window()
         .and_then(|win| win.document())
@@ -787,21 +804,18 @@ fn chat_submit_cb(chats: Arc<Mutex<Chats>>) {
     };
 
     let message: Message = Message::from(chat_prompt);
-    print_to_console("chat_submit 2 submit: calling make_request");
+
     let conversation_collection1 = chats.clone();
-    let conversation_collection2 = chats.clone();
     let xhr = make_request(
         message,
         move |message: Message| make_request_cb(message, conversation_collection1.clone()),
-        move || abort_request_cb(conversation_collection2.clone()),
+        abort_request_cb,
     )
     .unwrap();
-    chats
-        .lock()
-        .unwrap()
-        .get_current_conversation_mut()
-        .unwrap()
-        .request = Some(xhr);
+    match chats.try_borrow_mut() {
+        Err(err) => print_to_console_s(format!("Failed to borrow chats `chat_submit_cb`: {err:?}")),
+        Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
+    };
 
-    remake_side_panel(&document, chats.clone()).unwrap();
+    remake_side_panel(chats.clone()).unwrap();
 }

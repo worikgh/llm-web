@@ -133,7 +133,6 @@ pub fn set_css_rules(document: &Document, css_rules: &CssRules) -> Result<(), Js
     for (selector, v) in css_rules.selector_rules.iter() {
         for (rule, value) in v.iter() {
             let rule = format!("{selector}{{{rule}:{value}}}");
-            print_to_console_s(format!("Set style: {rule}"));
             css_style_sheet.insert_rule(rule.as_str())?;
         }
     }
@@ -150,7 +149,7 @@ pub fn add_css_rule<T: Into<String>>(
 ) -> Result<(), JsValue> {
     let value: String = value.into();
     // Check if the style element already contains CSS rules
-    print_to_console("add_css_rule 1");
+    // print_to_console("add_css_rule 1");
 
     if let Some(rules) = get_css_rules(document)?.selector_rules.get(selector) {
         // The selector is registered
@@ -186,7 +185,7 @@ pub fn add_css_rule<T: Into<String>>(
 #[allow(dead_code)]
 pub fn clear_css(document: &Document) -> Result<(), JsValue> {
     // See: https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleSheet/deleteRule
-    print_to_console("clear_css 1");
+    // print_to_console("clear_css 1");
     let style_sheets: StyleSheetList = document.style_sheets();
     let lim_i = style_sheets.length();
     for i in 0..lim_i {
@@ -205,10 +204,10 @@ pub fn clear_css(document: &Document) -> Result<(), JsValue> {
         let css_rules: CssRuleList = css_style_sheet.css_rules()?;
         let lim_j = css_rules.length();
         for j in 0..lim_j {
-            if css_rules.item(j).is_none() {
-                print_to_console_s(format!("{i}/{lim_i}:{j}/{lim_j} Failed"));
-                continue;
-            }
+            // if css_rules.item(j).is_none() {
+            //     print_to_console_s(format!("{i}/{lim_i}:{j}/{lim_j} Failed"));
+            //     continue;
+            // }
             css_style_sheet.delete_rule(j)?;
         }
     }

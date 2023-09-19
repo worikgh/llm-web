@@ -54,8 +54,7 @@ pub fn set_status(document: &Document, status: &str) {
 
 #[allow(dead_code)]
 pub fn set_focus_on_element(document: &Document, element_id: &str) {
-    // let document = web_sys::window().unwrap().document().unwrap();
-    print_to_console("set_focus_on_element 1");
+    // print_to_console("set_focus_on_element 1");
     if let Some(element) = document.get_element_by_id(element_id) {
         if let Some(input) = element.dyn_ref::<HtmlElement>() {
             input.focus().unwrap();
@@ -69,13 +68,12 @@ pub fn set_focus_on_element(document: &Document, element_id: &str) {
             "Failed to set focus.  Could not find: {element_id}"
         ));
     }
-    print_to_console("set_focus_on_element 2");
 }
 
 /// Set up the basic page with header, footer, and body
 #[allow(dead_code)]
 pub fn initialise_page() -> Result<(), JsValue> {
-    print_to_console("initialise_page()");
+    // print_to_console("initialise_page()");
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");

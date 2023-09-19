@@ -6,32 +6,25 @@
 use crate::llm_webpage::LlmWebPage;
 use crate::make_request::make_request;
 use crate::manipulate_css::add_css_rule;
-#[allow(unused_imports)]
 use crate::set_page::set_page;
 use crate::set_page::set_status;
 use crate::set_page::update_cost_display;
 use crate::set_page::Pages;
-use crate::utility::print_to_console;
-use crate::utility::print_to_console_s;
 #[allow(unused_imports)]
-use gloo::{events, timers};
+use crate::utility::{print_to_console, print_to_console_s};
 use gloo_events::EventListener;
-#[allow(unused_imports)]
-use js_sys::Function;
 use llm_web_common::communication::CommType;
 use llm_web_common::communication::LoginRequest;
 use llm_web_common::communication::LoginResponse;
 use llm_web_common::communication::Message;
-#[allow(unused_imports)]
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
-#[allow(unused_imports)]
-use web_sys::{window, Document, Element, EventTarget, HtmlInputElement};
+use web_sys::{window, Document, Element, HtmlInputElement};
 pub struct LoginDiv;
 impl LlmWebPage for LoginDiv {
     ///  The login screen
     fn initialise_page(document: &Document) -> Result<Element, JsValue> {
-        print_to_console("login_div");
+        // print_to_console("login_div 1");
 
         let login_main_div = document.create_element("div")?;
         login_main_div.set_id("login-main-div");
@@ -101,11 +94,9 @@ impl LlmWebPage for LoginDiv {
                 "".to_string()
             };
 
-            print_to_console_s(format!("click! username: {username} {:?}", username_input));
             let login_request = LoginRequest { username, password };
             let login_message = Message::from(login_request);
             let cb = |msg: Message| {
-                print_to_console_s(format!("login_div call back.  message: {msg:?}"));
                 match msg.comm_type {
                     CommType::LoginResponse => {
                         let lr: LoginResponse = serde_json::from_str(msg.object.as_str()).unwrap();
