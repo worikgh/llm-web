@@ -1,6 +1,6 @@
 //! Webapp front end for accessing large language models.
 #[allow(unused_imports)]
-use crate::utility::print_to_console;
+use crate::utility::{print_to_console, print_to_console_s};
 use set_page::initialise_page;
 use set_page::set_page;
 use set_page::Pages;
@@ -49,13 +49,3 @@ pub fn run_app() -> Result<(), JsValue> {
 
     Ok(())
 }
-// #[wasm_bindgen(start)]
-// fn main() -> Result<(), JsValue> {
-//     initialise_page()?;
-//     start_app()
-// }
-
-// fn start_app() -> Result<(), JsValue> {
-//     set_page(login_div)?;
-//     Ok(())
-// }

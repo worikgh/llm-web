@@ -1,7 +1,5 @@
 #[allow(unused_imports)]
-use crate::utility::print_to_console;
-#[allow(unused_imports)]
-use crate::utility::print_to_console_s;
+use crate::utility::{print_to_console, print_to_console_s};
 use std::collections::BTreeMap;
 use std::fmt;
 use wasm_bindgen::prelude::*;

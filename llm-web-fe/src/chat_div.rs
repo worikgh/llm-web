@@ -8,9 +8,8 @@ use crate::manipulate_css::set_css_rules;
 use crate::set_page::set_focus_on_element;
 use crate::set_page::set_status;
 use crate::set_page::update_cost_display;
-use crate::utility::print_to_console;
 #[allow(unused_imports)]
-use crate::utility::print_to_console_s;
+use crate::utility::{print_to_console, print_to_console_s};
 use gloo_events::EventListener;
 use llm_web_common::communication::ChatPrompt;
 use llm_web_common::communication::ChatResponse;

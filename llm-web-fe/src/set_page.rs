@@ -4,13 +4,10 @@ use crate::llm_webpage::LlmWebPage;
 use crate::login_div::LoginDiv;
 use crate::manipulate_css::add_css_rule;
 #[allow(unused_imports)]
-use crate::utility::print_to_console;
-#[allow(unused_imports)]
-use crate::utility::print_to_console_s;
+use crate::utility::{print_to_console, print_to_console_s};
 use wasm_bindgen::prelude::*;
 use web_sys::window;
 use web_sys::{Document, HtmlElement};
-const MAIN_DIV_NAME: &str = "main_body";
 
 pub enum Pages {
     ChatDiv,
@@ -30,7 +27,7 @@ pub fn set_page(page: Pages) -> Result<(), JsValue> {
         Pages::ChatDiv => ChatDiv::initialise_page(&document)?,
         Pages::LoginDiv => LoginDiv::initialise_page(&document)?,
     };
-    if let Some(main_body) = document.get_element_by_id(MAIN_DIV_NAME) {
+    if let Some(main_body) = document.get_element_by_id("main_body") {
         main_body.set_inner_html("");
         main_body.append_child(&e)?;
         body.append_child(&main_body)?;
@@ -104,7 +101,7 @@ pub fn initialise_page() -> Result<(), JsValue> {
     body.append_child(&header_div)?;
     body.append_child(&main_body)?;
 
-    // The style.  Sies given in integer units of percent
+    // The style.  Sizes given in integer units of percent
     let footer_height = 10;
     let header_height = 10;
     let main_body_height = 100 - (footer_height + header_height);
