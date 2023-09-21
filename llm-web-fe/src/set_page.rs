@@ -6,7 +6,7 @@ use crate::manipulate_css::add_css_rule;
 #[allow(unused_imports)]
 use crate::utility::{print_to_console, print_to_console_s};
 use wasm_bindgen::prelude::*;
-use web_sys::window;
+use web_sys::{window, HtmlButtonElement};
 use web_sys::{Document, HtmlElement};
 
 pub enum Pages {
@@ -162,4 +162,23 @@ pub fn update_cost_display(document: &Document, credit: f64, total_cost: f64, th
     let cost_div = document.get_element_by_id("cost_div").unwrap();
     let cost_string = format!("{this_cost:.4}/{total_cost:.3}/{credit:.2}");
     cost_div.set_inner_html(cost_string.as_str());
+}
+
+/// Make a button
+pub fn new_button(
+    document: &Document,
+    id: &str,
+    display: &str,
+) -> Result<HtmlButtonElement, JsValue> {
+    print_to_console("new_button 1");
+    let result: HtmlButtonElement = document
+        .create_element("button")
+        .map_err(|err| format!("Error creating button element: {:?}", err))?
+        .dyn_into::<HtmlButtonElement>()
+        .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
+    print_to_console("new_button 1.1");
+    result.set_id(id);
+    result.set_inner_text(display);
+    print_to_console("new_button 2");
+    Ok(result)
 }

@@ -5,6 +5,7 @@ use crate::manipulate_css::add_css_rule;
 use crate::manipulate_css::clear_css;
 use crate::manipulate_css::get_css_rules;
 use crate::manipulate_css::set_css_rules;
+use crate::set_page::new_button;
 use crate::set_page::set_focus_on_element;
 use crate::set_page::set_status;
 use crate::set_page::update_cost_display;
@@ -50,6 +51,7 @@ impl Conversation {
             request: None,
         }
     }
+
     /// Get a display to put in response area.  Transform the text
     /// into HTML, and put class definitions in for prompts and
     /// responses so they can be styled
@@ -110,6 +112,24 @@ impl Chats {
         })
     }
 
+    fn new_conservation_name(&self) -> usize {
+        // Generate a index for the conversation.  This will ensure
+        // there are usize::MAX conversations, ever, during the life
+        // time of this interface
+        match self.conversations.keys().len() {
+            0 => {
+                // Base case.  First name
+                0
+            }
+            _ => {
+                let indexes = self.conversations.keys().collect::<Vec<&usize>>();
+                // TODO There has to be a better way to get the maximum index already
+                let max = indexes.iter().fold(0, |a, b| if **b > a { **b } else { a });
+                max + 1
+            }
+        }
+    }
+
     // The current conversation is where the focus of the user is. It
     // must be:
     // * initialised when a conversation starts .
@@ -117,17 +137,7 @@ impl Chats {
     // * References to read it
     // * Reference to mutate it
     fn initialise_current_conversation(&mut self) {
-        // Generate a index for the conversation.  This will ensure
-        // there are usize::MAX conversations, ever, during the life
-        // time of this interface
-        let index = match self.conversations.keys().len() {
-            0 => 0,
-            _ => {
-                let indexes = self.conversations.keys().collect::<Vec<&usize>>();
-                // TODO There has to be a better way to get the maximum index already
-                indexes.iter().fold(0, |a, b| if **b > a { **b } else { a })
-            }
-        };
+        let index = self.new_conservation_name();
         self.conversations.insert(index, Conversation::new());
         self.current_conversation = Some(index);
     }
@@ -137,7 +147,7 @@ impl Chats {
         // Preconditions:
         // 1. There is a current conversation
         // 2. The `prompt` is not None in current conversation
-        // print_to_console("update_current_conversation 1 ");
+        print_to_console("update_current_conversation 1 ");
         let conversation = self.get_current_conversation_mut().unwrap();
         let prompt: String = conversation.prompt.as_ref().unwrap().clone();
         conversation.prompt = None;
@@ -188,6 +198,7 @@ pub struct ChatDiv;
 impl LlmWebPage for ChatDiv {
     /// Screen for the `chat` model interface
     fn initialise_page(document: &Document) -> Result<Element, JsValue> {
+        print_to_console("initialise_page 1");
         // Manage state of the conversations with the LLM
         let chats = Rc::new(RefCell::new(Chats::new()?));
 
@@ -388,6 +399,7 @@ impl LlmWebPage for ChatDiv {
 
         set_focus_on_element(document, "prompt_input");
 
+        print_to_console("initialise_page 2");
         Ok(chat_div)
     }
 }
@@ -408,10 +420,33 @@ fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
     parent.replace_child(&new_side_panel_div, &old_side_panel)?;
     Ok(())
 }
+
+/// Make a new conversation
+fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
+    match chats.try_borrow_mut() {
+        Err(err) => print_to_console_s(format!(
+            "Failed to borrow chats making a new conversation: {err}"
+        )),
+        Ok(mut chats) => {
+            print_to_console_s(format!(
+                "make_new_conversation 1.1: length {}",
+                chats.conversations.len()
+            ));
+            let name = chats.new_conservation_name();
+            chats.conversations.insert(name, Conversation::new());
+            print_to_console_s(format!(
+                "make_new_conversation 1.3: new named: {name} length {}",
+                chats.conversations.len()
+            ));
+        }
+    };
+    Ok(())
+}
+
 /// Create the side panel
 fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Element, JsValue> {
     // The side_panel menu
-    // print_to_console("make_side_panel 1");
+    print_to_console("make_side_panel 1");
     let side_panel_div = document
         .create_element("div")
         .expect("Could not create DIV element");
@@ -436,15 +471,11 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     )?)?;
     side_panel_div.append_child(&select_element)?;
 
+    print_to_console("make_side_panel 1.5");
+
     // The clear response button
     // Make a button that clears the responses
-    let clear_response = document
-        .create_element("button")
-        .unwrap()
-        .dyn_into::<HtmlButtonElement>()
-        .unwrap();
-    clear_response.set_inner_text("Clear Conversation");
-    clear_response.set_id("clear_response");
+    let clear_response = new_button(document, "clear_response", "Clear Conversation")?;
     let ss = chats.clone();
     let clear_conversation_closure = Closure::wrap(Box::new(move || {
         let document = window()
@@ -468,18 +499,32 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
         }
         update_cost_display(&document, credit, 0.0, 0.0);
     }) as Box<dyn Fn()>);
+    print_to_console("make_side_panel 1.6");
+
     clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
     clear_conversation_closure.forget();
     side_panel_div.append_child(&clear_response)?;
+    print_to_console("make_side_panel 1.7");
 
+    // New conversation button
+    let new_conversation = new_button(document, "new_conversation", "New Conversation")?;
+    let chats_clone = chats.clone();
+    let new_conversation_closure = Closure::wrap(Box::new(move || {
+        match make_new_conversation(chats_clone.clone()) {
+            Ok(()) => (),
+            Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
+        };
+        match remake_side_panel(chats_clone.clone()) {
+            Ok(()) => (),
+            Err(err) => print_to_console_s(format!("Failed to remake side panel: {err:?}")),
+        };
+    }) as Box<dyn Fn()>);
+    new_conversation.set_onclick(Some(new_conversation_closure.as_ref().unchecked_ref()));
+    new_conversation_closure.forget();
+
+    side_panel_div.append_child(&new_conversation)?;
     // Experimental button
-    let clear_style = document
-        .create_element("button")
-        .unwrap()
-        .dyn_into::<HtmlButtonElement>()
-        .unwrap();
-    clear_style.set_inner_text("Style Experiment");
-    clear_style.set_id("clear_style");
+    let clear_style = new_button(document, "clear_style", "Style Experiment")?;
     let resp_closure = Closure::wrap(Box::new(|| {
         print_to_console("rep_closure 1");
         let document = window()
@@ -514,6 +559,7 @@ fn make_conversation_list(
     document: &Document,
     arc_chats: Rc<RefCell<Chats>>,
 ) -> Result<Element, JsValue> {
+    print_to_console("make_conservation_list 1");
     let conversation_list_div = document.create_element("div")?;
     let ul = document.create_element("ul")?;
     conversation_list_div.append_child(&ul)?;
@@ -522,6 +568,10 @@ fn make_conversation_list(
         Err(err) => print_to_console_s(format!("Cannot borrow chats: {err:?}")),
         Ok(chats) => {
             let conversations: &HashMap<usize, Conversation> = &chats.conversations;
+            print_to_console_s(format!(
+                "make_conservation_list 1.1 length of list: {}",
+                conversations.len()
+            ));
             for (key, conversation) in conversations.iter() {
                 // Each conversation has an element in this list
                 let li = document.create_element("li")?;
@@ -606,6 +656,7 @@ fn make_conversation_list(
             }
         }
     };
+    print_to_console("make_conservation_list 2");
     Ok(conversation_list_div)
 }
 
