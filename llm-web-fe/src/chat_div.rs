@@ -366,6 +366,7 @@ impl LlmWebPage for ChatDiv {
         )?;
         add_css_rule(document, "#prompt_div", "border", "1px solid black")?;
         add_css_rule(document, "#prompt_div", "display", "flex")?;
+        add_css_rule(document, "#prompt_div", "align-items", "center")?;
         add_css_rule(document, "#prompt_input", "flex-grow", "1")?;
 
         add_css_rule(
