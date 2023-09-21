@@ -481,6 +481,7 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     clear_style.set_inner_text("Style Experiment");
     clear_style.set_id("clear_style");
     let resp_closure = Closure::wrap(Box::new(|| {
+        print_to_console("rep_closure 1");
         let document = window()
             .and_then(|win| win.document())
             .expect("Failed to get document");
@@ -488,7 +489,14 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
         cs_rules
             .insert("#side-panel-div", "background-color", "aliceblue")
             .unwrap();
-        clear_css(&document).unwrap();
+        match clear_css(&document) {
+            Ok(()) => (),
+            Err(err) => print_to_console_s(format!(
+                "Failed clear_css {}:{}",
+                err.as_string().unwrap_or("<UNKNOWN>".to_string()),
+                err.js_typeof().as_string().unwrap_or("".to_string()),
+            )),
+        };
         set_css_rules(&document, &cs_rules).unwrap();
     }) as Box<dyn Fn()>);
     clear_style.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));

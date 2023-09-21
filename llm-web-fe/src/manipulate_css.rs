@@ -184,12 +184,15 @@ pub fn add_css_rule<T: Into<String>>(
 pub fn clear_css(document: &Document) -> Result<(), JsValue> {
     // See: https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleSheet/deleteRule
     // print_to_console("clear_css 1");
+    // print_to_console("clear_css 1");
     let style_sheets: StyleSheetList = document.style_sheets();
     let lim_i = style_sheets.length();
     for i in 0..lim_i {
         // For each style sheet.  Forced unwrap OK because `i` is
         // confined to a range
+
         let style_sheet: StyleSheet = style_sheets.get(i).unwrap();
+
         let css_style_sheet =
             match wasm_bindgen::JsCast::dyn_into::<web_sys::CssStyleSheet>(style_sheet) {
                 Ok(css) => css,
@@ -202,14 +205,16 @@ pub fn clear_css(document: &Document) -> Result<(), JsValue> {
         let css_rules: CssRuleList = css_style_sheet.css_rules()?;
         let lim_j = css_rules.length();
         for j in 0..lim_j {
-            // if css_rules.item(j).is_none() {
-            //     print_to_console_s(format!("{i}/{lim_i}:{j}/{lim_j} Failed"));
-            //     continue;
-            // }
-            css_style_sheet.delete_rule(j)?;
+            match css_style_sheet.delete_rule(j) {
+                Ok(()) => (),
+                Err(err) => print_to_console_s(format!(
+                    "Cannot delete rule {j} of {lim_j}: {}:{}",
+                    err.as_string().unwrap_or("<UNKNOWN>".to_string()),
+                    err.js_typeof().as_string().unwrap_or("".to_string()),
+                )),
+            };
         }
     }
-
     let style_element = get_style_element(document)?;
     style_element.set_inner_html("");
     Ok(())
