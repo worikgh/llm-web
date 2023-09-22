@@ -422,7 +422,26 @@ impl LlmWebPage for ChatDiv {
         // add_css_rule(document, ".svg_cancel_button", "cursor", "pointer")?;
         // add_css_rule(document, ".svg_cancel_button", "width", "20px")?;
         add_css_rule(document, ".prompt_cancel_button", "height", "1.5em")?;
-        // add_css_rule(document, ".prompt_cancel_button", "width", "10%")?;
+
+        // add_css_rule(document, ".prompt_cancel_button", "display", "flex")?;
+        // add_css_rule(
+        //     document,
+        //     ".prompt_cancel_button",
+        //     "justify-content",
+        //     "center",
+        // )?;
+
+        // Align the cancel button vertically
+        add_css_rule(document, "li", "display", "flex")?;
+        add_css_rule(document, "li", "align-items", "center")?;
+
+        add_css_rule(document, ".conversation_name", "font-size", "small")?;
+        add_css_rule(document, ".conversation_name", "width", "65%")?;
+        add_css_rule(document, ".conversation_name", "display", "inline-block")?;
+        add_css_rule(document, ".conversation_name", "overflow", "hidden")?;
+        add_css_rule(document, ".conversation_name", "white-space", "nowrap")?;
+        add_css_rule(document, ".conversation_name", "margin-right", ".4em")?;
+        add_css_rule(document, "ul", "list-style", "none")?;
 
         print_to_console("initialise_page 2");
         Ok(chat_div)
@@ -610,14 +629,6 @@ fn make_conversation_list(
                     None => false,
                 };
 
-                // The text to display is taken from the first prompt for the
-                // conversation.  It is hard to know what to do here.  Perhaps
-                // a method for the user to name conversations?
-                let text_element = document.create_element("input")?;
-                let label = conversation.get_label();
-                text_element.set_attribute("value", label.as_str())?;
-                li.append_child(&text_element)?;
-
                 // A radio button The current conversation is selected.
                 // Changing teh selection will change the current
                 // conversation.
@@ -630,8 +641,17 @@ fn make_conversation_list(
                 }
                 li.append_child(&current_radio)?;
 
+                // The text to display is taken from the first prompt for the
+                // conversation.  It is hard to know what to do here.  Perhaps
+                // a method for the user to name conversations?
+                let conversation_name = document.create_element("span")?;
+                conversation_name.set_attribute("class", "conversation_name")?;
+                let label = conversation.get_label();
+                conversation_name.set_inner_html(label.as_str());
+                li.append_child(&conversation_name)?;
+
                 // If this is active create a button to cancel it
-                if active {
+                if true {
                     let _cancel_button = CancelButton;
                     let cancel_button: HtmlImageElement = document
                         .create_element("img")
