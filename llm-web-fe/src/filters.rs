@@ -1,5 +1,7 @@
-/// Filter HTML text so it is displayed properly.
-pub fn filter_html(input: &str) -> String {
+/// Change text so it can be displayed in a HTML element
+/// `input` Plain text to convert
+/// `result` Html version of `input`
+pub fn text_for_html(input: &str) -> String {
     let mut result = String::new();
     for c in input.chars() {
         match c {

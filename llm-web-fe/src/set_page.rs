@@ -1,5 +1,5 @@
 use crate::chat_div::ChatDiv;
-use crate::filters::filter_html;
+use crate::filters::text_for_html;
 use crate::llm_webpage::LlmWebPage;
 use crate::login_div::LoginDiv;
 use crate::manipulate_css::add_css_rule;
@@ -41,7 +41,7 @@ pub fn set_page(page: Pages) -> Result<(), JsValue> {
 
 #[allow(dead_code)]
 pub fn set_status(document: &Document, status: &str) {
-    let status = &filter_html(status);
+    let status = &text_for_html(status);
     if let Some(status_element) = document.get_element_by_id("status_div") {
         status_element.set_inner_html(status);
     } else {

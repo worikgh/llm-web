@@ -6,9 +6,15 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::XmlHttpRequest;
-/// `message` is the data to send to back end
-/// `f` is the function to call with the response.  It will call `set_page`
 
+/// `message` is the data to send to back end
+///
+/// `callback_onload` is the function to call with the response.  It
+/// will call `set_page` to create the next page of the app, updated
+/// (if necessary) with data returned from `make_request`
+///
+/// `callback_onabort` is the function to call if aborted.  Not much
+/// use for it yet.  May end up deprecated
 pub fn make_request(
     message: Message,
     mut callback_onload: impl FnMut(Message) + 'static,
@@ -20,14 +26,25 @@ pub fn make_request(
         CommType::ChatPrompt => "chat",
         _ => {
             print_to_console_s(format!("make_request Unimplemented: {message}"));
-            panic!("Unimplemented")
+            let err = format!(
+                "`make_request` called for {} which is unimplemented",
+                message.comm_type
+            );
+            let err = err.as_str();
+            return Err(JsValue::from_str(err));
         }
     };
+
+    // The URI is allways the URI that served the APP, so we only need
+    // the path element
     let uri = format!("/api/{api}");
+
     let xhr: XmlHttpRequest = XmlHttpRequest::new().unwrap();
     xhr.open("POST", uri.as_str())?;
     xhr.set_request_header("Content-Type", "application/json")?;
     let xhr_clone = xhr.clone();
+
+    // The callback for when data arrives.
     let cb = Closure::wrap(Box::new(move |_data: JsValue| {
         if xhr_clone.ready_state() == 4 && xhr_clone.status().unwrap() == 200 {
             let response = xhr_clone.response_text().unwrap().unwrap();
@@ -39,14 +56,16 @@ pub fn make_request(
 
     xhr.set_onload(Some(cb.as_ref().unchecked_ref()));
     cb.forget();
+
     let callback_onabort = Rc::new(RefCell::new(callback_onabort));
 
-    let callback_onabort_clone = callback_onabort.clone();
     let closure_onabort = Closure::wrap(Box::new(move || {
-        (*callback_onabort_clone.borrow_mut())();
+        (*callback_onabort.borrow_mut())();
     }) as Box<dyn Fn()>);
     xhr.set_onabort(Some(closure_onabort.as_ref().unchecked_ref()));
     closure_onabort.forget();
+
+    // Lastly do the actual network operation
     let message_str = serde_json::to_string(&message).unwrap();
     xhr.send_with_opt_u8_array(Some(message_str.as_str().as_bytes()))
         .unwrap();

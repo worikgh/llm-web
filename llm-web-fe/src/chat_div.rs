@@ -1,4 +1,4 @@
-use crate::filters::filter_html;
+use crate::filters::text_for_html;
 use crate::llm_webpage::LlmWebPage;
 use crate::make_request::make_request;
 use crate::manipulate_css::add_css_rule;
@@ -59,9 +59,9 @@ impl Conversation {
         let mut result = String::new();
         for i in self.responses.iter() {
             let prompt = i.0.as_str();
-            let prompt = filter_html(prompt);
+            let prompt = text_for_html(prompt);
             let respone = i.1.response.as_str();
-            let respone = filter_html(respone);
+            let respone = text_for_html(respone);
             result = format!("{result}<br/><span class='prompt'>{prompt}</span><br/><span class='response'>{respone}</span>",);
         }
         result
