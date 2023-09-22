@@ -5,7 +5,6 @@ use set_page::initialise_page;
 use set_page::set_page;
 use set_page::Pages;
 use wasm_bindgen::prelude::*;
-mod cancel_button;
 mod chat_div;
 mod cost_div;
 mod filters;

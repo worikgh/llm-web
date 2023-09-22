@@ -170,15 +170,15 @@ pub fn new_button(
     id: &str,
     display: &str,
 ) -> Result<HtmlButtonElement, JsValue> {
-    print_to_console("new_button 1");
+    // print_to_console("new_button 1");
     let result: HtmlButtonElement = document
         .create_element("button")
         .map_err(|err| format!("Error creating button element: {:?}", err))?
         .dyn_into::<HtmlButtonElement>()
         .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
-    print_to_console("new_button 1.1");
+
     result.set_id(id);
     result.set_inner_text(display);
-    print_to_console("new_button 2");
+
     Ok(result)
 }

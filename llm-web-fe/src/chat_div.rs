@@ -1,4 +1,3 @@
-use crate::cancel_button::CancelButton;
 use crate::filters::filter_html;
 use crate::llm_webpage::LlmWebPage;
 use crate::make_request::make_request;
@@ -143,13 +142,44 @@ impl Chats {
         self.current_conversation = Some(index);
     }
 
+    /// Triggered by the radio buttons
+    fn set_current_conversation(&mut self, cc: usize) -> Result<(), JsError> {
+        if self.conversations.get(&cc).is_some() {
+            self.current_conversation = Some(cc);
+            Ok(())
+        } else {
+            Err(JsError::new("invalid conversation"))
+        }
+    }
+
     /// Update conversation when response received
-    fn update_current_conversation(&mut self, response: ChatResponse) -> Result<(), JsValue> {
+    /// Possibly never used
+    fn _update_current_conversation(&mut self, response: ChatResponse) -> Result<(), JsValue> {
         // Preconditions:
         // 1. There is a current conversation
         // 2. The `prompt` is not None in current conversation
         print_to_console("update_current_conversation 1 ");
         let conversation = self.get_current_conversation_mut().unwrap();
+        print_to_console("update_current_conversation 1.1 ");
+        let prompt: String = conversation.prompt.as_ref().unwrap().clone();
+        print_to_console("update_current_conversation 1.2 ");
+        conversation.prompt = None;
+        conversation.responses.push((prompt, response));
+        print_to_console("update_current_conversation 2 ");
+
+        Ok(())
+    }
+
+    /// Update a conversation when response received
+    fn update_conversation(
+        &mut self,
+        response: ChatResponse,
+        conversation_key: usize,
+    ) -> Result<(), JsValue> {
+        // Preconditions:
+        // 1. There is a current conversation
+        // 2. The `prompt` is not None in current conversation
+        let conversation = self.get_conversation_mut(conversation_key).unwrap();
         let prompt: String = conversation.prompt.as_ref().unwrap().clone();
         conversation.prompt = None;
         conversation.responses.push((prompt, response));
@@ -172,6 +202,16 @@ impl Chats {
         } else {
             None
         }
+    }
+
+    /// Get a conversation to mutate
+    fn get_conversation_mut(&mut self, current_conversation: usize) -> Option<&mut Conversation> {
+        self.conversations.get_mut(&current_conversation)
+    }
+
+    /// Get a conversation to read
+    fn get_conversation(&mut self, current_conversation: usize) -> Option<&Conversation> {
+        self.conversations.get(&current_conversation)
     }
 }
 
@@ -263,6 +303,7 @@ impl LlmWebPage for ChatDiv {
         prompt_div.append_child(&submit_button)?;
 
         let side_panel_div = make_side_panel(document, chats.clone())?;
+        print_to_console("Made side panel initialise_page");
         // Put the page together
         chat_div.append_child(&conversation_div).unwrap();
         chat_div.append_child(&prompt_div).unwrap();
@@ -455,6 +496,7 @@ fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
         .expect("Failed to get document");
 
     let new_side_panel_div = make_side_panel(&document, chats.clone())?;
+    print_to_console("Made side panel remake");
     let old_side_panel = document
         .get_element_by_id("side-panel-div")
         .ok_or_else(|| JsValue::from_str("Failed to get side panel."))?;
@@ -472,16 +514,16 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
             "Failed to borrow chats making a new conversation: {err}"
         )),
         Ok(mut chats) => {
-            print_to_console_s(format!(
-                "make_new_conversation 1.1: length {}",
-                chats.conversations.len()
-            ));
+            // print_to_console_s(format!(
+            //     "make_new_conversation 1.1: length {}",
+            //     chats.conversations.len()
+            // ));
             let name = chats.new_conservation_name();
             chats.conversations.insert(name, Conversation::new());
-            print_to_console_s(format!(
-                "make_new_conversation 1.3: new named: {name} length {}",
-                chats.conversations.len()
-            ));
+            // print_to_console_s(format!(
+            //     "make_new_conversation 1.3: new named: {name} length {}",
+            //     chats.conversations.len()
+            // ));
         }
     };
     Ok(())
@@ -490,7 +532,7 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
 /// Create the side panel
 fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Element, JsValue> {
     // The side_panel menu
-    print_to_console("make_side_panel 1");
+    // print_to_console("make_side_panel 1");
     let side_panel_div = document
         .create_element("div")
         .expect("Could not create DIV element");
@@ -514,8 +556,6 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
         "Gpt-4", "gpt-4",
     )?)?;
     side_panel_div.append_child(&select_element)?;
-
-    print_to_console("make_side_panel 1.5");
 
     // The clear response button
     // Make a button that clears the responses
@@ -543,12 +583,10 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
         }
         update_cost_display(&document, credit, 0.0, 0.0);
     }) as Box<dyn Fn()>);
-    print_to_console("make_side_panel 1.6");
 
     clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
     clear_conversation_closure.forget();
     side_panel_div.append_child(&clear_response)?;
-    print_to_console("make_side_panel 1.7");
 
     // New conversation button
     let new_conversation = new_button(document, "new_conversation", "New Conversation")?;
@@ -593,118 +631,206 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     side_panel_div.append_child(&clear_style)?;
 
     let conversation_list = make_conversation_list(document, chats.clone())?;
+    print_to_console("make_side_panel: Got conversation list");
+
     side_panel_div.append_child(&conversation_list)?;
-    // Display the conversations
+
     Ok(side_panel_div)
+}
+
+fn update_response_screen(chats: Rc<RefCell<Chats>>) {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let result_div = document.get_element_by_id("response_div").unwrap();
+    match chats.try_borrow() {
+        Err(_err) => print_to_console("Failed to borrow chats: update_response_screen"),
+
+        Ok(chats) => {
+            let display: String = if let Some(c) = chats.get_current_conversation() {
+                c.get_response_display()
+            } else {
+                result_div.set_inner_html("");
+                "".to_string()
+            };
+            result_div.set_inner_html(display.as_str());
+        }
+    }
 }
 
 /// Make a list of conversations for the side panel
 fn make_conversation_list(
     document: &Document,
-    arc_chats: Rc<RefCell<Chats>>,
+    chats: Rc<RefCell<Chats>>,
 ) -> Result<Element, JsValue> {
-    print_to_console("make_conservation_list 1");
+    // print_to_console("make_conservation_list 1");
+    print_to_console("make_conversation_list 1");
+
     let conversation_list_div = document.create_element("div")?;
-    let ul = document.create_element("ul")?;
-    conversation_list_div.append_child(&ul)?;
 
-    match arc_chats.try_borrow() {
-        Err(err) => print_to_console_s(format!("Cannot borrow chats: {err:?}")),
+    // Collect the data to build the display widgets (<li>...</li>)
+    // for the conversations
+    struct DisplayData {
+        active: bool,
+        current: bool,
+        label: String,
+    }
+
+    let mut conversation_displays: HashMap<usize, DisplayData> = HashMap::new();
+    match chats.try_borrow() {
+        Err(_err) => {
+            return Err(JsValue::from_str(
+                "Cannot borrow chats.  make_conversation_list",
+            ))
+        }
         Ok(chats) => {
-            let conversations: &HashMap<usize, Conversation> = &chats.conversations;
-            print_to_console_s(format!(
-                "make_conservation_list 1.1 length of list: {}",
-                conversations.len()
-            ));
+            let conversations = &chats.conversations;
+
             for (key, conversation) in conversations.iter() {
-                // Each conversation has an element in this list
-                let li = document.create_element("li")?;
-
                 // Is this converstion active?
-                let active = conversation.prompt.is_some();
-
                 // Is this the currentconversation?
+                print_to_console("make_side_panel 1.2 in loop");
+                let active = conversation.prompt.is_some();
                 let current = match chats.current_conversation {
                     Some(c) => c == *key,
                     None => false,
                 };
-
-                // A radio button The current conversation is selected.
-                // Changing teh selection will change the current
-                // conversation.
-                let current_radio = document.create_element("input")?;
-                current_radio.set_attribute("type", "radio")?;
-                current_radio.set_attribute("name", "conversation_radio_buttons")?;
-                current_radio.set_id(format!("conversation_radio_{key}").as_str());
-                if current {
-                    current_radio.set_attribute("checked", "")?;
-                }
-                li.append_child(&current_radio)?;
-
-                // The text to display is taken from the first prompt for the
-                // conversation.  It is hard to know what to do here.  Perhaps
-                // a method for the user to name conversations?
-                let conversation_name = document.create_element("span")?;
-                conversation_name.set_attribute("class", "conversation_name")?;
                 let label = conversation.get_label();
-                conversation_name.set_inner_html(label.as_str());
-                li.append_child(&conversation_name)?;
-
-                // If this is active create a button to cancel it
-                if active {
-                    let _cancel_button = CancelButton;
-                    let cancel_button: HtmlImageElement = document
-                        .create_element("img")
-                        .map_err(|err| format!("Error creating button element: {:?}", err))?
-                        .dyn_into::<HtmlImageElement>()
-                        .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
-                    // cancel_button.set_inner_text("cancel");
-                    cancel_button.set_src("data/cancel_button.png");
-                    cancel_button.set_id(format!("cancel_request_{key}").as_str());
-                    cancel_button.set_attribute("class", "prompt_cancel_button")?;
-                    li.append_child(&cancel_button)?;
-                    let arc_chats_event_handler_copy = arc_chats.clone();
-
-                    let event_handler = Closure::wrap(Box::new(move |_event: Event| {
-                        {
-                            match arc_chats_event_handler_copy.try_borrow_mut() {
-                                Ok(mut m_chats) => {
-                                    match m_chats.get_current_conversation() {
-                                        Some(cc) => match &cc.request {
-                                            Some(xhr) => {
-                                                xhr.abort().unwrap();
-                                                if let Some(cc) =
-                                                    m_chats.get_current_conversation_mut()
-                                                {
-                                                    cc.prompt = None;
-                                                    cc.request = None;
-                                                } else {
-                                                    print_to_console(
-                                                        "Cannot get current conversation for abort",
-                                                    );
-                                                }
-                                            }
-                                            None => print_to_console("Got no xhr"),
-                                        },
-                                        None => print_to_console("Got no cc"),
-                                    };
-                                }
-                                Err(err) => print_to_console_s(format!(
-                                    "Failed to borrow chats `make_conversation_list` {err:?}"
-                                )),
-                            };
-                        }
-                        remake_side_panel(arc_chats_event_handler_copy.clone()).unwrap();
-                    }) as Box<dyn FnMut(_)>);
-
-                    cancel_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
-                    event_handler.forget();
-                }
-                ul.append_child(&li)?;
+                conversation_displays.insert(
+                    *key,
+                    DisplayData {
+                        active,
+                        current,
+                        label,
+                    },
+                );
             }
         }
-    };
-    print_to_console("make_conservation_list 2");
+    }
+
+    // Now buld the HTML data
+    let ul = document.create_element("ul")?;
+    print_to_console_s(format!(
+        "conversation_displays.len(): {}",
+        conversation_displays.len()
+    ));
+    for (key, dd) in conversation_displays.iter() {
+        print_to_console("make_side_panel 1.3 Create widget loop");
+        //...........conservation_displays
+        // Each conversation has an element in this list
+        let li = document.create_element("li")?;
+
+        // A radio button The current conversation is selected.
+        // Changing the selection will change the current
+        // conversation.
+        let current_radio = document.create_element("input")?;
+        let current_radio = current_radio.dyn_ref::<HtmlInputElement>().unwrap();
+        current_radio.set_attribute("type", "radio")?;
+        current_radio.set_attribute("name", "conversation_radio_buttons")?;
+        current_radio.set_id(format!("conversation_radio_{key}").as_str());
+        if dd.current {
+            current_radio.set_attribute("checked", "")?;
+        }
+
+        let chats_clone = chats.clone();
+        let current_radio_click = Closure::wrap(Box::new(move |event: web_sys::Event| {
+            let chats = chats_clone.clone();
+            let target = event.target().unwrap();
+            let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+
+            // Get the ID off the clicked radio button
+            let id = target_element.id();
+            print_to_console_s(format!("Radio: {id}"));
+            // Radio: conversation_radio_1
+            let id = id.as_str();
+            let id = &id["conversation_radio_".len()..];
+            match id.parse() {
+                Ok(key) => {
+                    // clear_current_conversation();
+                    match chats.try_borrow_mut() {
+                        Ok(mut chats) => match chats.set_current_conversation(key) {
+                            Ok(()) => (),
+                            Err(_err) => print_to_console_s(format!(
+                                "Failed to set current conversation to: {key}"
+                            )),
+                        },
+                        Err(_err) => {
+                            print_to_console("Cannot borrow_mut chats current_radio_click handler")
+                        }
+                    };
+                }
+                Err(err) => print_to_console_s(format!("Cannot parse id: {id}. Error: {err:?}")),
+            };
+
+            // Redraw the response screen screen
+            update_response_screen(chats.clone());
+            //....
+        }) as Box<dyn FnMut(Event)>);
+
+        current_radio.set_onclick(Some(current_radio_click.as_ref().unchecked_ref()));
+        current_radio_click.forget();
+
+        li.append_child(current_radio)?;
+
+        // The text to display is taken from the first prompt for the
+        // conversation.  It is hard to know what to do here.  Perhaps
+        // a method for the user to name conversations?
+        let conversation_name = document.create_element("span")?;
+        conversation_name.set_attribute("class", "conversation_name")?;
+        conversation_name.set_inner_html(dd.label.as_str());
+        li.append_child(&conversation_name)?;
+
+        // If this is active create a button to cancel it
+        if dd.active {
+            // let _cancel_button = CancelButton;
+            let cancel_button: HtmlImageElement = document
+                .create_element("img")
+                .map_err(|err| format!("Error creating button element: {:?}", err))?
+                .dyn_into::<HtmlImageElement>()
+                .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
+            // cancel_button.set_inner_text("cancel");
+            cancel_button.set_src("data/cancel_button.png");
+            cancel_button.set_id(format!("cancel_request_{key}").as_str());
+            cancel_button.set_attribute("class", "prompt_cancel_button")?;
+            li.append_child(&cancel_button)?;
+
+            let arc_chats_event_handler_copy = chats.clone();
+            let event_handler = Closure::wrap(Box::new(move |_event: Event| {
+                {
+                    match arc_chats_event_handler_copy.try_borrow_mut() {
+                        Ok(mut m_chats) => {
+                            match m_chats.get_current_conversation() {
+                                Some(cc) => match &cc.request {
+                                    Some(xhr) => {
+                                        xhr.abort().unwrap();
+                                        if let Some(cc) = m_chats.get_current_conversation_mut() {
+                                            cc.prompt = None;
+                                            cc.request = None;
+                                        } else {
+                                            print_to_console(
+                                                "Cannot get current conversation for abort",
+                                            );
+                                        }
+                                    }
+                                    None => print_to_console("Got no xhr"),
+                                },
+                                None => print_to_console("Got no cc"),
+                            };
+                        }
+                        Err(err) => print_to_console_s(format!(
+                            "Failed to borrow chats `make_conversation_list` {err:?}"
+                        )),
+                    };
+                }
+                remake_side_panel(arc_chats_event_handler_copy.clone()).unwrap();
+            }) as Box<dyn FnMut(_)>);
+
+            cancel_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
+            event_handler.forget();
+        }
+        ul.append_child(&li)?;
+    }
+    conversation_list_div.append_child(&ul)?;
     Ok(conversation_list_div)
 }
 
@@ -768,6 +894,7 @@ fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> 
 fn process_chat_response(
     chat_response: ChatResponse,
     chats: Rc<RefCell<Chats>>,
+    current_conversation: usize,
 ) -> Result<(), JsValue> {
     //print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
 
@@ -804,8 +931,8 @@ fn process_chat_response(
         )),
         Ok(mut cas) => {
             cas.credit = credit;
-            cas.update_current_conversation(chat_response)?;
-            let display: String = if let Some(c) = cas.get_current_conversation() {
+            cas.update_conversation(chat_response, current_conversation)?;
+            let display: String = if let Some(c) = cas.get_conversation(current_conversation) {
                 c.get_response_display()
             } else {
                 result_div.set_inner_html("");
@@ -832,7 +959,11 @@ fn abort_request_cb() {
 }
 
 /// The callback for `make_request`
-fn make_request_cb(message: Message, conversations: Rc<RefCell<Chats>>) {
+fn make_request_cb(
+    message: Message,
+    conversations: Rc<RefCell<Chats>>,
+    current_conversation: usize,
+) {
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
@@ -844,7 +975,8 @@ fn make_request_cb(message: Message, conversations: Rc<RefCell<Chats>>) {
         CommType::ChatResponse => {
             let chat_response: ChatResponse =
                 serde_json::from_str(message.object.as_str()).unwrap();
-            process_chat_response(chat_response, conversations.clone()).unwrap();
+            process_chat_response(chat_response, conversations.clone(), current_conversation)
+                .unwrap();
             remake_side_panel(conversations.clone()).unwrap();
         }
         CommType::InvalidRequest => {
@@ -912,10 +1044,32 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
 
     let message: Message = Message::from(chat_prompt);
 
-    let conversation_collection1 = chats.clone();
+    // Need to tell the callback for `make_request` what conversation
+    // is being used.  Cannot rely "current_convesation" as it may
+    // change while the network request is under way
+    let current_conversation: usize = match chats.try_borrow() {
+        Err(_err) => {
+            print_to_console(
+                "Failed borrowing chats to get current conversation for request callback",
+            );
+            return;
+        }
+        Ok(chats) => match chats.current_conversation {
+            Some(cc) => cc,
+            None => {
+                print_to_console(
+                    "Failed borrowing chats to get current conversation for request callback",
+                );
+                return;
+            }
+        },
+    };
+    let chats_make_req_cb = chats.clone();
     let xhr = make_request(
         message,
-        move |message: Message| make_request_cb(message, conversation_collection1.clone()),
+        move |message: Message| {
+            make_request_cb(message, chats_make_req_cb.clone(), current_conversation)
+        },
         abort_request_cb,
     )
     .unwrap();
