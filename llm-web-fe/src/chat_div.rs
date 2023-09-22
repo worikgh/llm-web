@@ -651,7 +651,7 @@ fn make_conversation_list(
                 li.append_child(&conversation_name)?;
 
                 // If this is active create a button to cancel it
-                if true {
+                if active {
                     let _cancel_button = CancelButton;
                     let cancel_button: HtmlImageElement = document
                         .create_element("img")
