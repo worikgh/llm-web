@@ -29,6 +29,7 @@ features = [
 'EventTarget',
 'HtmlButtonElement',
 'HtmlElement',
+'HtmlImageElement',
 'HtmlInputElement',
 'HtmlLinkElement',
 'HtmlOptionElement',

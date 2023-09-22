@@ -1,3 +1,4 @@
+use crate::cancel_button::CancelButton;
 use crate::filters::filter_html;
 use crate::llm_webpage::LlmWebPage;
 use crate::make_request::make_request;
@@ -29,8 +30,8 @@ use web_sys::{Event, XmlHttpRequest};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{
-    window, Document, Element, HtmlButtonElement, HtmlInputElement, HtmlOptionElement,
-    HtmlSelectElement,
+    window, Document, Element, HtmlButtonElement, HtmlElement, HtmlImageElement, HtmlInputElement,
+    HtmlOptionElement, HtmlSelectElement,
 };
 
 /// A conversation.  If `prompt` is not `None` a chat prompt has been
@@ -399,6 +400,30 @@ impl LlmWebPage for ChatDiv {
 
         set_focus_on_element(document, "prompt_input");
 
+        // cancel_button.set_id(format!("cancel_request_{key}").as_str());
+        // cancel_button.set_attribute("class", "prompt_cancel_button")?;
+        // padding: 10px;
+        // add_css_rule(document, ".prompt_cancel_button", "padding", "10%")?;
+        // border: none;
+        // add_css_rule(document, ".prompt_cancel_button", "border", "none")?;
+        // background-color: #f0f0f0;
+        add_css_rule(
+            // Transparent
+            document,
+            ".prompt_cancel_button",
+            "background-color",
+            "rgba(0, 0, 0, 0)",
+        )?;
+        // color: #333;
+        // add_css_rule(document, ".prompt_cancel_button", "color", "#333")?;
+        // font-size: 16px;
+        // add_css_rule(document, ".prompt_cancel_button", "font-size", "16px")?;
+        // cursor: pointer;
+        // add_css_rule(document, ".svg_cancel_button", "cursor", "pointer")?;
+        // add_css_rule(document, ".svg_cancel_button", "width", "20px")?;
+        // add_css_rule(document, ".svg_cancel_button", "height", "20px")?;
+        // add_css_rule(document, ".prompt_cancel_button", "width", "10%")?;
+
         print_to_console("initialise_page 2");
         Ok(chat_div)
     }
@@ -607,13 +632,16 @@ fn make_conversation_list(
 
                 // If this is active create a button to cancel it
                 if active {
-                    let cancel_button: HtmlButtonElement = document
-                        .create_element("button")
+                    let _cancel_button = CancelButton;
+                    let cancel_button: HtmlImageElement = document
+                        .create_element("img")
                         .map_err(|err| format!("Error creating button element: {:?}", err))?
-                        .dyn_into::<HtmlButtonElement>()
+                        .dyn_into::<HtmlImageElement>()
                         .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
-                    cancel_button.set_inner_text("cancel");
+                    // cancel_button.set_inner_text("cancel");
+                    cancel_button.set_src("data/cancel_button.svg");
                     cancel_button.set_id(format!("cancel_request_{key}").as_str());
+                    cancel_button.set_attribute("class", "prompt_cancel_button")?;
                     li.append_child(&cancel_button)?;
                     let arc_chats_event_handler_copy = arc_chats.clone();
 
