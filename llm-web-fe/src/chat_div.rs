@@ -30,7 +30,7 @@ use web_sys::{Event, XmlHttpRequest};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{
-    window, Document, Element, HtmlButtonElement, HtmlElement, HtmlImageElement, HtmlInputElement,
+    window, Document, Element, HtmlButtonElement, HtmlImageElement, HtmlInputElement,
     HtmlOptionElement, HtmlSelectElement,
 };
 
@@ -421,7 +421,7 @@ impl LlmWebPage for ChatDiv {
         // cursor: pointer;
         // add_css_rule(document, ".svg_cancel_button", "cursor", "pointer")?;
         // add_css_rule(document, ".svg_cancel_button", "width", "20px")?;
-        // add_css_rule(document, ".svg_cancel_button", "height", "20px")?;
+        add_css_rule(document, ".prompt_cancel_button", "height", "1.5em")?;
         // add_css_rule(document, ".prompt_cancel_button", "width", "10%")?;
 
         print_to_console("initialise_page 2");
@@ -639,7 +639,7 @@ fn make_conversation_list(
                         .dyn_into::<HtmlImageElement>()
                         .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
                     // cancel_button.set_inner_text("cancel");
-                    cancel_button.set_src("data/cancel_button.svg");
+                    cancel_button.set_src("data/cancel_button.png");
                     cancel_button.set_id(format!("cancel_request_{key}").as_str());
                     cancel_button.set_attribute("class", "prompt_cancel_button")?;
                     li.append_child(&cancel_button)?;
