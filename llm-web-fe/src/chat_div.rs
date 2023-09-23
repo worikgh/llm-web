@@ -496,23 +496,6 @@ impl LlmWebPage for ChatDiv {
     }
 }
 
-/// Remake the side panel
-fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-
-    let new_side_panel_div = make_side_panel(&document, chats.clone())?;
-    let old_side_panel = document
-        .get_element_by_id("side-panel-div")
-        .ok_or_else(|| JsValue::from_str("Failed to get side panel."))?;
-    let parent = old_side_panel
-        .parent_node()
-        .ok_or_else(|| JsValue::from_str("Failed to find parent node."))?;
-    parent.replace_child(&new_side_panel_div, &old_side_panel)?;
-    Ok(())
-}
-
 /// Make a new conversation
 fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
     match chats.try_borrow_mut() {
@@ -542,6 +525,297 @@ fn set_current_conversation(chats: Rc<RefCell<Chats>>, key: usize) {
     }
 }
 
+/// A prompt has returned from the LLM.  Process it here
+fn process_chat_response(
+    chat_response: ChatResponse,
+    chats: Rc<RefCell<Chats>>,
+    conversation_key: usize,
+) -> Result<(), JsValue> {
+    //print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
+
+    // Save this to display it
+    let credit = chat_response.credit;
+
+    // A new round to be added to the current conversation
+    //cas.update_current_conversation(chat_response)?;
+
+    // Get the cost
+    let this_cost = chat_response.cost;
+    let total_cost = match chats.try_borrow() {
+        Err(err) => {
+            print_to_console_s(format!(
+                "Failed to borrow chats `process_chat_response`: {err:?}"
+            ));
+            f64::NAN
+        }
+        Ok(cas) => match cas.get_current_conversation() {
+            Some(c) => c.responses.iter().fold(0.0, |a, b| a + b.1.cost) + this_cost,
+            None => 0.0,
+        },
+    };
+
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+
+    match chats.try_borrow_mut() {
+        Err(err) => print_to_console_s(format!(
+            "Failed to borrow chats `process_chat_response`: {err:?}"
+        )),
+        Ok(mut cas) => {
+            cas.credit = credit;
+            cas.update_conversation(chat_response, conversation_key)?;
+            if let Some(cc) = cas.current_conversation {
+                // There is a current conversation
+                if cc == conversation_key {
+                    // This data returned is for the current
+                    // conversation So update display
+                    // Get response area and update the response
+                    let result_div = document.get_element_by_id("response_div").unwrap();
+                    let display: String = if let Some(c) = cas.get_conversation(conversation_key) {
+                        c.get_response_display()
+                    } else {
+                        print_to_console_s(format!(
+                            "Cannot get the current conversation: {conversation_key}"
+                        ));
+                        result_div.set_inner_html("");
+                        "".to_string()
+                    };
+                    result_div.set_inner_html(display.as_str());
+
+                    // Scroll to the bottom
+                    result_div.set_scroll_top(result_div.scroll_height());
+                }
+            }
+        }
+    };
+
+    update_cost_display(&document, credit, total_cost, this_cost);
+
+    Ok(())
+}
+
+/// Display the current conversation or clear the response screen if
+/// there is none
+fn update_response_screen(chats: Rc<RefCell<Chats>>) {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let result_div = document.get_element_by_id("response_div").unwrap();
+    match chats.try_borrow() {
+        Err(_err) => print_to_console("Failed to borrow chats: update_response_screen"),
+
+        Ok(chats) => {
+            let display: String = if let Some(c) = chats.get_current_conversation() {
+                c.get_response_display()
+            } else {
+                result_div.set_inner_html("");
+                "".to_string()
+            };
+            result_div.set_inner_html(display.as_str());
+        }
+    }
+}
+
+/// The callback for abort fetching a response
+fn abort_request_cb() {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    set_status(&document, "Abort request");
+}
+
+/// The callback for `make_request`
+fn make_request_cb(
+    message: Message,
+    conversations: Rc<RefCell<Chats>>,
+    current_conversation: usize,
+) {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    set_status(
+        &document,
+        format!("make_request_cb 1 {}", message.comm_type).as_str(),
+    );
+    match message.comm_type {
+        CommType::ChatResponse => {
+            let chat_response: ChatResponse =
+                serde_json::from_str(message.object.as_str()).unwrap();
+            process_chat_response(chat_response, conversations.clone(), current_conversation)
+                .unwrap();
+            remake_side_panel(conversations.clone()).unwrap();
+        }
+        CommType::InvalidRequest => {
+            let inr: InvalidRequest =
+                serde_json::from_str(message.object.as_str()).expect("Not an InvalidRequest");
+            let document = window()
+                .and_then(|win| win.document())
+                .expect("Failed to get document");
+
+            let result_div = document.get_element_by_id("response_div").unwrap();
+            result_div.set_inner_html(&inr.reason);
+        }
+        _ => (),
+    };
+}
+
+/// The callback for the submit button to send a prompt to the model.
+fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
+    // print_to_console("chat_submit 1");
+    // Get the contents of the prompt
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let prompt_input: HtmlInputElement = document
+        .get_element_by_id("prompt_input")
+        .unwrap()
+        .dyn_into::<HtmlInputElement>()
+        .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
+        .unwrap();
+    let prompt = prompt_input.value();
+    prompt_input.set_value("");
+    set_status(&document, format!("Sending prompt: {prompt}").as_str());
+
+    // The history or the chat so far, plus latest prompt
+    let messages: Vec<LLMMessage> = build_messages(chats.clone(), prompt.clone());
+    // The model to use
+    let model = get_model();
+
+    // Get the token
+    let token: String;
+    if let Some(t) = document.body().unwrap().get_attribute("data.token") {
+        token = t;
+    } else {
+        todo!("Set status concerning error: No data token");
+    }
+
+    let chat_prompt = ChatPrompt {
+        model,
+        messages,
+        temperature: 1.0, // Todo: Get this from user interface
+        token,
+    };
+
+    let message: Message = Message::from(chat_prompt);
+
+    // Need to tell the callback for `make_request` what conversation
+    // is being used.  Cannot rely "current_convesation" as it may
+    // change while the network request is under way
+    let current_conversation: usize = match chats.try_borrow() {
+        Err(_err) => {
+            print_to_console(
+                "Failed borrowing chats to get current conversation for request callback",
+            );
+            return;
+        }
+        Ok(chats) => match chats.current_conversation {
+            Some(cc) => cc,
+            None => {
+                print_to_console(
+                    "Failed borrowing chats to get current conversation for request callback",
+                );
+                return;
+            }
+        },
+    };
+    let chats_make_req_cb = chats.clone();
+    let xhr = make_request(
+        message,
+        move |message: Message| {
+            make_request_cb(message, chats_make_req_cb.clone(), current_conversation)
+        },
+        abort_request_cb,
+    )
+    .unwrap();
+    match chats.try_borrow_mut() {
+        Err(err) => print_to_console_s(format!("Failed to borrow chats `chat_submit_cb`: {err:?}")),
+        Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
+    };
+
+    remake_side_panel(chats.clone()).unwrap();
+}
+
+/// Called to construct the messages for a request.  Each interaction
+/// with the LLM includes a history of prevous interactions.  In the
+/// general case this is the history of the current conversation.
+/// `prompt` is the user's latest input
+fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> {
+    // `messages` is the historical response, build it here.
+    let mut result: Vec<LLMMessage> = Vec::new();
+
+    // The "role" is first.  Allways using the same role (TODO: this
+    // needs to be configurable)
+    result.push(LLMMessage {
+        role: LLMMessageType::System,
+        content: "You are a helpful assistant".to_string(),
+    });
+
+    match chats.try_borrow_mut() {
+        Err(err) => print_to_console_s(format!("Failed to borrow chats `build_messages` {err:?}")),
+        Ok(mut chats) => {
+            // Then the history of the conversation
+            match chats.get_current_conversation() {
+                Some(conversation) => {
+                    for i in 0..conversation.responses.len() {
+                        // chat_state.responses[i] has a prompt and a response.
+                        let prompt: String = conversation.responses[i].0.clone();
+                        let response: String = conversation.responses[i].1.response.clone();
+
+                        result.push(LLMMessage {
+                            role: LLMMessageType::User,
+                            content: prompt,
+                        });
+                        result.push(LLMMessage {
+                            role: LLMMessageType::Assistant,
+                            content: response,
+                        });
+                    }
+                }
+                None => {
+                    // There is no current conversation.
+                    (*chats).initialise_current_conversation();
+                }
+            }
+            // Finally the prompt
+            result.push(LLMMessage {
+                role: LLMMessageType::User,
+                content: prompt.clone(),
+            });
+            chats
+                .get_current_conversation_mut()
+                .as_mut()
+                .unwrap()
+                .prompt = Some(prompt);
+        }
+    };
+    result
+}
+
+/// Remake the side panel
+fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+
+    // Get the data from the side-panel that have changed from defaults
+    // Model
+    let model = get_model();
+
+    let new_side_panel_div = make_side_panel(&document, chats.clone())?;
+    let old_side_panel = document
+        .get_element_by_id("side-panel-div")
+        .ok_or_else(|| JsValue::from_str("Failed to get side panel."))?;
+    let parent = old_side_panel
+        .parent_node()
+        .ok_or_else(|| JsValue::from_str("Failed to find parent node."))?;
+    parent.replace_child(&new_side_panel_div, &old_side_panel)?;
+
+    // Reset the data that may have changed from the defaults
+    set_model(model.as_str());
+    Ok(())
+}
+
 /// Create the side panel
 fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Element, JsValue> {
     // The side_panel menu
@@ -557,7 +831,7 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
         .unwrap()
         .dyn_into::<HtmlSelectElement>()
         .unwrap();
-    select_element.set_id("model-chat");
+    select_element.set_id("model_chat");
     let options = select_element.options();
 
     options.add_with_html_option_element(&HtmlOptionElement::new_with_text_and_value(
@@ -650,26 +924,6 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     side_panel_div.append_child(&conversation_list)?;
 
     Ok(side_panel_div)
-}
-
-fn update_response_screen(chats: Rc<RefCell<Chats>>) {
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    let result_div = document.get_element_by_id("response_div").unwrap();
-    match chats.try_borrow() {
-        Err(_err) => print_to_console("Failed to borrow chats: update_response_screen"),
-
-        Ok(chats) => {
-            let display: String = if let Some(c) = chats.get_current_conversation() {
-                c.get_response_display()
-            } else {
-                result_div.set_inner_html("");
-                "".to_string()
-            };
-            result_div.set_inner_html(display.as_str());
-        }
-    }
 }
 
 /// Make a list of conversations for the side panel
@@ -892,259 +1146,62 @@ fn make_conversation_list(
     Ok(conversation_list_div)
 }
 
-/// Called to construct the messages for a request.  Each interaction
-/// with the LLM includes a history of prevous interactions.  In the
-/// general case this is the history of the current conversation.
-/// `prompt` is the user's latest input
-fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> {
-    // `messages` is the historical response, build it here.
-    let mut result: Vec<LLMMessage> = Vec::new();
+/// Get the model that the user has selected from the side panel
+fn get_model() -> String {
+    // Worik: I am having a debate with myself: Should the `document`
+    // be passed around or should it be grabbed from the global
+    // environment each time?
 
-    // The "role" is first.  Allways using the same role (TODO: this
-    // needs to be configurable)
-    result.push(LLMMessage {
-        role: LLMMessageType::System,
-        content: "You are a helpful assistant".to_string(),
-    });
+    // The former would be strictly necessary if `window()` can ever
+    // be one thing or another - but I do not think that is the case.
 
-    match chats.try_borrow_mut() {
-        Err(err) => print_to_console_s(format!("Failed to borrow chats `build_messages` {err:?}")),
-        Ok(mut chats) => {
-            // Then the history of the conversation
-            match chats.get_current_conversation() {
-                Some(conversation) => {
-                    for i in 0..conversation.responses.len() {
-                        // chat_state.responses[i] has a prompt and a response.
-                        let prompt: String = conversation.responses[i].0.clone();
-                        let response: String = conversation.responses[i].1.response.clone();
+    // The later makes for simpler function signatures (less typing)
+    // and if `window()` always produces the same object everywhere
+    // does not harm except...
 
-                        result.push(LLMMessage {
-                            role: LLMMessageType::User,
-                            content: prompt,
-                        });
-                        result.push(LLMMessage {
-                            role: LLMMessageType::Assistant,
-                            content: response,
-                        });
-                    }
-                }
-                None => {
-                    // There is no current conversation.
-                    (*chats).initialise_current_conversation();
-                }
-            }
-            // Finally the prompt
-            result.push(LLMMessage {
-                role: LLMMessageType::User,
-                content: prompt.clone(),
-            });
-            chats
-                .get_current_conversation_mut()
-                .as_mut()
-                .unwrap()
-                .prompt = Some(prompt);
-        }
-    };
-    result
-}
-
-/// A prompt has returned from the LLM.  Process it here
-fn process_chat_response(
-    chat_response: ChatResponse,
-    chats: Rc<RefCell<Chats>>,
-    conversation_key: usize,
-) -> Result<(), JsValue> {
-    //print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
-
-    // Save this to display it
-    let credit = chat_response.credit;
-
-    // A new round to be added to the current conversation
-    //cas.update_current_conversation(chat_response)?;
-
-    // Get the cost
-    let this_cost = chat_response.cost;
-    let total_cost = match chats.try_borrow() {
-        Err(err) => {
-            print_to_console_s(format!(
-                "Failed to borrow chats `process_chat_response`: {err:?}"
-            ));
-            f64::NAN
-        }
-        Ok(cas) => match cas.get_current_conversation() {
-            Some(c) => c.responses.iter().fold(0.0, |a, b| a + b.1.cost) + this_cost,
-            None => 0.0,
-        },
-    };
-
+    // Is obtaining the `window()` expensive?  How do I profile
+    // something like that?
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
-
-    match chats.try_borrow_mut() {
-        Err(err) => print_to_console_s(format!(
-            "Failed to borrow chats `process_chat_response`: {err:?}"
-        )),
-        Ok(mut cas) => {
-            cas.credit = credit;
-            cas.update_conversation(chat_response, conversation_key)?;
-            if let Some(cc) = cas.current_conversation {
-                // There is a current conversation
-                if cc == conversation_key {
-                    // This data returned is for the current
-                    // conversation So update display
-                    // Get response area and update the response
-                    let result_div = document.get_element_by_id("response_div").unwrap();
-                    let display: String = if let Some(c) = cas.get_conversation(conversation_key) {
-                        c.get_response_display()
-                    } else {
-                        print_to_console_s(format!(
-                            "Cannot get the current conversation: {conversation_key}"
-                        ));
-                        result_div.set_inner_html("");
-                        "".to_string()
-                    };
-                    result_div.set_inner_html(display.as_str());
-
-                    // Scroll to the bottom
-                    result_div.set_scroll_top(result_div.scroll_height());
-                }
-            }
-        }
-    };
-
-    update_cost_display(&document, credit, total_cost, this_cost);
-
-    Ok(())
-}
-
-/// The callback for abort fetching a response
-fn abort_request_cb() {
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    set_status(&document, "Abort request");
-}
-
-/// The callback for `make_request`
-fn make_request_cb(
-    message: Message,
-    conversations: Rc<RefCell<Chats>>,
-    current_conversation: usize,
-) {
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    set_status(
-        &document,
-        format!("make_request_cb 1 {}", message.comm_type).as_str(),
-    );
-    match message.comm_type {
-        CommType::ChatResponse => {
-            let chat_response: ChatResponse =
-                serde_json::from_str(message.object.as_str()).unwrap();
-            process_chat_response(chat_response, conversations.clone(), current_conversation)
-                .unwrap();
-            remake_side_panel(conversations.clone()).unwrap();
-        }
-        CommType::InvalidRequest => {
-            let inr: InvalidRequest =
-                serde_json::from_str(message.object.as_str()).expect("Not an InvalidRequest");
-            let document = window()
-                .and_then(|win| win.document())
-                .expect("Failed to get document");
-
-            let result_div = document.get_element_by_id("response_div").unwrap();
-            result_div.set_inner_html(&inr.reason);
-        }
-        _ => (),
-    };
-}
-
-/// The callback for the submit button to send a prompt to the model.
-fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
-    // print_to_console("chat_submit 1");
-    // Get the contents of the prompt
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    let prompt_input: HtmlInputElement = document
-        .get_element_by_id("prompt_input")
-        .unwrap()
-        .dyn_into::<HtmlInputElement>()
-        .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
-        .unwrap();
-    let prompt = prompt_input.value();
-    prompt_input.set_value("");
-    set_status(&document, format!("Sending prompt: {prompt}").as_str());
-
-    // The history or the chat so far, plus latest prompt
-    let messages: Vec<LLMMessage> = build_messages(chats.clone(), prompt.clone());
-
     // Get the model
     let model_selection: HtmlSelectElement = document
-        .get_element_by_id("model-chat")
+        .get_element_by_id("model_chat")
         .unwrap()
         .dyn_into::<HtmlSelectElement>()
         .map_err(|err| format!("Error casting to HtmlOptionsCollection: {err:?}",))
         .unwrap();
-
     let model: String = if let Some(element) = model_selection.selected_options().item(0) {
         element.get_attribute("value").unwrap()
     } else {
-        todo!("Handle this")
+        // This should never happen.  There is a default and no way to
+        // select no model.
+        print_to_console("Cannot get a model from the side panel");
+        panic!()
     };
+    model
+}
 
-    // Get the token
-    let token: String;
-    if let Some(t) = document.body().unwrap().get_attribute("data.token") {
-        token = t;
-    } else {
-        todo!("Set status concerning error: No data token");
-    }
-
-    let chat_prompt = ChatPrompt {
-        model,
-        messages,
-        temperature: 1.0, // Todo: Get this from user interface
-        token,
-    };
-
-    let message: Message = Message::from(chat_prompt);
-
-    // Need to tell the callback for `make_request` what conversation
-    // is being used.  Cannot rely "current_convesation" as it may
-    // change while the network request is under way
-    let current_conversation: usize = match chats.try_borrow() {
-        Err(_err) => {
-            print_to_console(
-                "Failed borrowing chats to get current conversation for request callback",
-            );
+/// Set the model to use.
+fn set_model(new_model: &str) {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    // Get the model
+    let model_selection: HtmlSelectElement = document
+        .get_element_by_id("model_chat")
+        .unwrap()
+        .dyn_into::<HtmlSelectElement>()
+        .map_err(|err| format!("Error casting to HtmlOptionsCollection: {err:?}",))
+        .unwrap();
+    for i in 0..model_selection.length() {
+        // Forced unwrap is guarded by loop
+        let e = model_selection.get(i).unwrap();
+        if e.get_attribute("value").unwrap() == new_model {
+            model_selection.set_selected_index(i as i32);
             return;
         }
-        Ok(chats) => match chats.current_conversation {
-            Some(cc) => cc,
-            None => {
-                print_to_console(
-                    "Failed borrowing chats to get current conversation for request callback",
-                );
-                return;
-            }
-        },
-    };
-    let chats_make_req_cb = chats.clone();
-    let xhr = make_request(
-        message,
-        move |message: Message| {
-            make_request_cb(message, chats_make_req_cb.clone(), current_conversation)
-        },
-        abort_request_cb,
-    )
-    .unwrap();
-    match chats.try_borrow_mut() {
-        Err(err) => print_to_console_s(format!("Failed to borrow chats `chat_submit_cb`: {err:?}")),
-        Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
-    };
-
-    remake_side_panel(chats.clone()).unwrap();
+    }
+    // Get to here and there has been an error.
+    print_to_console_s(format!("set_model({new_model}) failed"));
 }
