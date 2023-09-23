@@ -37,6 +37,7 @@ use web_sys::{
 /// sent and a reply is being waited for
 #[derive(Debug, Deserialize, Serialize)]
 struct Conversation {
+    key: usize,
     prompt: Option<String>,
     responses: Vec<(String, ChatResponse)>,
     #[serde(skip_serializing, skip_deserializing)]
@@ -44,8 +45,9 @@ struct Conversation {
 }
 
 impl Conversation {
-    fn new() -> Self {
+    fn new(key: usize) -> Self {
         Self {
+            key,
             prompt: None,
             responses: Vec::new(),
             request: None,
@@ -73,9 +75,13 @@ impl Conversation {
     /// user to name conversations?
     fn get_label(&self) -> String {
         if self.responses.is_empty() {
-            "Empty conversation".to_string()
+            format!("{}: Empty conversation", self.key)
         } else {
-            self.responses.first().unwrap().0.clone()
+            format!(
+                "{}: {}",
+                self.key,
+                self.responses.first().unwrap().0.clone()
+            )
         }
     }
 }
@@ -150,7 +156,7 @@ impl Chats {
     // * Reference to mutate it
     fn initialise_current_conversation(&mut self) {
         let index = self.new_conservation_key();
-        self.conversations.insert(index, Conversation::new());
+        self.conversations.insert(index, Conversation::new(index));
         self.current_conversation = Some(index);
     }
 
@@ -505,7 +511,7 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
         }
         Ok(mut chats) => {
             let key = chats.new_conservation_key();
-            chats.conversations.insert(key, Conversation::new());
+            chats.conversations.insert(key, Conversation::new(key));
             Ok(key)
         }
     }

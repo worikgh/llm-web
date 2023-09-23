@@ -10,4 +10,3 @@
 
 * Now there are multiple conversations the cost per conversation should be in the side panel.  Currently only clear conversation cost when "clear conversation" is used.
 * "clear conversations" button is deprecated
-* Conversation labels in the side panel are not necessarily unique.  If two conversations start with "Hi" they will both end up labeled "Hi"
