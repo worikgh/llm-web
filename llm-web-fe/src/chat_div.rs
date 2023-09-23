@@ -130,6 +130,18 @@ impl Chats {
         }
     }
 
+    fn delete_conversation(&mut self, key: usize) {
+        if self.conversations.remove(&key).is_none() {
+            print_to_console_s(format!(
+                "Chats::delete conversation: Key {key} does not exist"
+            ));
+        }
+        if let Some(cc) = self.current_conversation {
+            if cc == key {
+                self.current_conversation = None;
+            }
+        }
+    }
     // The current conversation is where the focus of the user is. It
     // must be:
     // * initialised when a conversation starts .
@@ -263,6 +275,7 @@ impl LlmWebPage for ChatDiv {
             .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))?;
         prompt_inp.set_value("");
         prompt_inp.set_type("text");
+        prompt_inp.set_attribute("spellcheck", "true")?;
         prompt_inp.set_id("prompt_input");
         let cc = chats.clone();
 
@@ -469,6 +482,7 @@ impl LlmWebPage for ChatDiv {
         // Align the cancel button vertically
         add_css_rule(document, "li", "display", "flex")?;
         add_css_rule(document, "li", "align-items", "center")?;
+        add_css_rule(document, ".delete_conversation_button", "height", "1.0em")?;
 
         add_css_rule(document, ".conversation_name", "font-size", "small")?;
         add_css_rule(document, ".conversation_name", "width", "65%")?;
@@ -731,6 +745,53 @@ fn make_conversation_list(
             current_radio.set_attribute("checked", "")?;
         }
 
+        let delete_button: HtmlImageElement = document
+            .create_element("img")
+            .map_err(|err| format!("Error creating button element: {:?}", err))?
+            .dyn_into::<HtmlImageElement>()
+            .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
+
+        delete_button.set_src("data/trash.png");
+        delete_button.set_id(format!("delete_conservation_{key}").as_str());
+        delete_button.set_attribute("class", "delete_conversation_button")?;
+
+        // Set event handler
+        let chats_clone = chats.clone();
+        let event_handler = Closure::wrap(Box::new(move |event: Event| {
+            let target = event.target().unwrap();
+            let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+
+            // Get the ID off the clicked radio button
+            let id = target_element.id();
+            let id = id.as_str();
+            let id = &id["delete_conservation_".len()..];
+            match id.parse::<usize>() {
+                Err(err) => print_to_console_s(format!(
+                    "Cannot parse {id} setting up delete conversation button: Error: {err}"
+                )),
+                Ok(key) => {
+                    print_to_console_s(format!("Delete conversation {id}"));
+                    match chats_clone.try_borrow_mut() {
+                        Err(_err) => print_to_console(
+                            "Delete conversation handler faied to borrow mut chats",
+                        ),
+                        Ok(mut chats) => {
+                            chats.delete_conversation(key);
+                        }
+                    };
+                    update_response_screen(chats_clone.clone());
+                    if let Err(_err) = remake_side_panel(chats_clone.clone()) {
+                        print_to_console("Delete conversation handler remake the side panel");
+                    }
+                }
+            };
+        }) as Box<dyn FnMut(_)>);
+
+        delete_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
+        event_handler.forget();
+
+        li.append_child(&delete_button)?;
+
         let chats_clone = chats.clone();
         let current_radio_click = Closure::wrap(Box::new(move |event: web_sys::Event| {
             let chats = chats_clone.clone();
@@ -765,10 +826,8 @@ fn make_conversation_list(
             update_response_screen(chats.clone());
             //....
         }) as Box<dyn FnMut(Event)>);
-
         current_radio.set_onclick(Some(current_radio_click.as_ref().unchecked_ref()));
         current_radio_click.forget();
-
         li.append_child(current_radio)?;
 
         // The text to display is taken from the first prompt for the
@@ -781,7 +840,7 @@ fn make_conversation_list(
 
         // If this is active create a button to cancel it
         if dd.active {
-            // let _cancel_button = CancelButton;
+            // Cancel button
             let cancel_button: HtmlImageElement = document
                 .create_element("img")
                 .map_err(|err| format!("Error creating button element: {:?}", err))?
@@ -946,8 +1005,9 @@ fn process_chat_response(
                         "".to_string()
                     };
                     result_div.set_inner_html(display.as_str());
-                    result_div.set_scroll_top(result_div.scroll_height()); // Scroll to the bottom
-                                                                           // Store credit in chat_state so it is available for new conversations
+
+                    // Scroll to the bottom
+                    result_div.set_scroll_top(result_div.scroll_height());
                 }
             }
         }
