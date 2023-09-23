@@ -615,6 +615,8 @@ fn update_response_screen(chats: Rc<RefCell<Chats>>) {
             result_div.set_inner_html(display.as_str());
         }
     }
+    // Scroll to the bottom
+    result_div.set_scroll_top(result_div.scroll_height());
 }
 
 /// The callback for abort fetching a response
