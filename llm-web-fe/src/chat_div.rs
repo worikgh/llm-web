@@ -893,7 +893,7 @@ fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> 
 fn process_chat_response(
     chat_response: ChatResponse,
     chats: Rc<RefCell<Chats>>,
-    current_conversation: usize,
+    conversation_key: usize,
 ) -> Result<(), JsValue> {
     //print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
 
@@ -922,27 +922,36 @@ fn process_chat_response(
         .and_then(|win| win.document())
         .expect("Failed to get document");
 
-    // Get response area and update the response
-    let result_div = document.get_element_by_id("response_div").unwrap();
     match chats.try_borrow_mut() {
         Err(err) => print_to_console_s(format!(
             "Failed to borrow chats `process_chat_response`: {err:?}"
         )),
         Ok(mut cas) => {
             cas.credit = credit;
-            cas.update_conversation(chat_response, current_conversation)?;
-            let display: String = if let Some(c) = cas.get_conversation(current_conversation) {
-                c.get_response_display()
-            } else {
-                result_div.set_inner_html("");
-                "".to_string()
-            };
-            result_div.set_inner_html(display.as_str());
+            cas.update_conversation(chat_response, conversation_key)?;
+            if let Some(cc) = cas.current_conversation {
+                // There is a current conversation
+                if cc == conversation_key {
+                    // This data returned is for the current
+                    // conversation So update display
+                    // Get response area and update the response
+                    let result_div = document.get_element_by_id("response_div").unwrap();
+                    let display: String = if let Some(c) = cas.get_conversation(conversation_key) {
+                        c.get_response_display()
+                    } else {
+                        print_to_console_s(format!(
+                            "Cannot get the current conversation: {conversation_key}"
+                        ));
+                        result_div.set_inner_html("");
+                        "".to_string()
+                    };
+                    result_div.set_inner_html(display.as_str());
+                    result_div.set_scroll_top(result_div.scroll_height()); // Scroll to the bottom
+                                                                           // Store credit in chat_state so it is available for new conversations
+                }
+            }
         }
     };
-
-    result_div.set_scroll_top(result_div.scroll_height()); // Scroll to the bottom
-                                                           // Store credit in chat_state so it is available for new conversations
 
     update_cost_display(&document, credit, total_cost, this_cost);
 
