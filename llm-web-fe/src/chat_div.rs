@@ -112,7 +112,7 @@ impl Chats {
         })
     }
 
-    fn new_conservation_name(&self) -> usize {
+    fn new_conservation_key(&self) -> usize {
         // Generate a index for the conversation.  This will ensure
         // there are usize::MAX conversations, ever, during the life
         // time of this interface
@@ -137,18 +137,18 @@ impl Chats {
     // * References to read it
     // * Reference to mutate it
     fn initialise_current_conversation(&mut self) {
-        let index = self.new_conservation_name();
+        let index = self.new_conservation_key();
         self.conversations.insert(index, Conversation::new());
         self.current_conversation = Some(index);
     }
 
     /// Triggered by the radio buttons
-    fn set_current_conversation(&mut self, cc: usize) -> Result<(), JsError> {
+    fn set_current_conversation(&mut self, cc: usize) -> Result<(), JsValue> {
         if self.conversations.get(&cc).is_some() {
             self.current_conversation = Some(cc);
             Ok(())
         } else {
-            Err(JsError::new("invalid conversation"))
+            Err(JsValue::from_str("invalid conversation"))
         }
     }
 
@@ -508,25 +508,36 @@ fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
 }
 
 /// Make a new conversation
-fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
+fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
     match chats.try_borrow_mut() {
-        Err(err) => print_to_console_s(format!(
-            "Failed to borrow chats making a new conversation: {err}"
-        )),
+        Err(err) => {
+            let result = format!("Failed to borrow chats making a new conversation: {err}");
+            return Err(JsValue::from_str(result.as_str()));
+        }
         Ok(mut chats) => {
             // print_to_console_s(format!(
             //     "make_new_conversation 1.1: length {}",
             //     chats.conversations.len()
             // ));
-            let name = chats.new_conservation_name();
-            chats.conversations.insert(name, Conversation::new());
-            // print_to_console_s(format!(
-            //     "make_new_conversation 1.3: new named: {name} length {}",
-            //     chats.conversations.len()
-            // ));
+            let key = chats.new_conservation_key();
+            chats.conversations.insert(key, Conversation::new());
+            Ok(key)
         }
-    };
-    Ok(())
+    }
+}
+
+/// Update the current conversation
+fn set_current_conversation(chats: Rc<RefCell<Chats>>, key: usize) {
+    if let Ok(mut chats) = chats.try_borrow_mut() {
+        match chats.set_current_conversation(key) {
+            Ok(()) => (),
+            Err(err) => print_to_console_s(format!(
+                "Failed to set current conversation to: {key}. Er: {err:?}"
+            )),
+        };
+    } else {
+        print_to_console("Failed to borrow chats mut set_currrent_conversation");
+    }
 }
 
 /// Create the side panel
@@ -593,7 +604,11 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     let chats_clone = chats.clone();
     let new_conversation_closure = Closure::wrap(Box::new(move || {
         match make_new_conversation(chats_clone.clone()) {
-            Ok(()) => (),
+            Ok(key) => {
+                set_current_conversation(chats_clone.clone(), key);
+                print_to_console_s(format!("New conversation: {key}"));
+                update_response_screen(chats_clone.clone());
+            }
             Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
         };
         match remake_side_panel(chats_clone.clone()) {
@@ -653,6 +668,10 @@ fn update_response_screen(chats: Rc<RefCell<Chats>>) {
                 result_div.set_inner_html("");
                 "".to_string()
             };
+            print_to_console_s(format!(
+                "update_response_scren key: {:?}",
+                chats.current_conversation
+            ));
             result_div.set_inner_html(display.as_str());
         }
     }
@@ -714,7 +733,10 @@ fn make_conversation_list(
         "conversation_displays.len(): {}",
         conversation_displays.len()
     ));
-    for (key, dd) in conversation_displays.iter() {
+    let mut keys: Vec<&usize> = conversation_displays.keys().collect();
+    keys.sort();
+    for key in keys {
+        let dd = conversation_displays.get(key).unwrap();
         print_to_console("make_side_panel 1.3 Create widget loop");
         //...........conservation_displays
         // Each conversation has an element in this list
