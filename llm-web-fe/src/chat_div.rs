@@ -37,6 +37,7 @@ use web_sys::{
 /// sent and a reply is being waited for
 #[derive(Debug, Deserialize, Serialize)]
 struct Conversation {
+    cost: f64,
     key: usize,
     prompt: Option<String>,
     responses: Vec<(String, ChatResponse)>,
@@ -47,6 +48,7 @@ struct Conversation {
 impl Conversation {
     fn new(key: usize) -> Self {
         Self {
+            cost: 0.0,
             key,
             prompt: None,
             responses: Vec::new(),
@@ -118,7 +120,7 @@ impl Chats {
         })
     }
 
-    fn new_conservation_key(&self) -> usize {
+    fn new_conversation_key(&self) -> usize {
         // Generate a index for the conversation.  This will ensure
         // there are usize::MAX conversations, ever, during the life
         // time of this interface
@@ -155,7 +157,7 @@ impl Chats {
     // * References to read it
     // * Reference to mutate it
     fn initialise_current_conversation(&mut self) {
-        let index = self.new_conservation_key();
+        let index = self.new_conversation_key();
         self.conversations.insert(index, Conversation::new(index));
         self.current_conversation = Some(index);
     }
@@ -188,11 +190,13 @@ impl Chats {
         &mut self,
         response: ChatResponse,
         conversation_key: usize,
+        conversation_cost: f64,
     ) -> Result<(), JsValue> {
         // Preconditions:
         // 1. There is a current conversation
         // 2. The `prompt` is not None in current conversation
         let conversation = self.get_conversation_mut(conversation_key).unwrap();
+        conversation.cost = conversation_cost;
         let prompt: String = conversation.prompt.as_ref().unwrap().clone();
         conversation.prompt = None;
         conversation.responses.push((prompt, response));
@@ -223,7 +227,7 @@ impl Chats {
     }
 
     /// Get a conversation to read
-    fn get_conversation(&mut self, current_conversation: usize) -> Option<&Conversation> {
+    fn get_conversation(&self, current_conversation: usize) -> Option<&Conversation> {
         self.conversations.get(&current_conversation)
     }
 }
@@ -490,6 +494,7 @@ impl LlmWebPage for ChatDiv {
         add_css_rule(document, "li", "align-items", "center")?;
         add_css_rule(document, ".delete_conversation_button", "height", "1.0em")?;
 
+        add_css_rule(document, ".cost_span", "font-size", "small")?;
         add_css_rule(document, ".conversation_name", "font-size", "small")?;
         add_css_rule(document, ".conversation_name", "width", "65%")?;
         add_css_rule(document, ".conversation_name", "display", "inline-block")?;
@@ -510,7 +515,7 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
             return Err(JsValue::from_str(result.as_str()));
         }
         Ok(mut chats) => {
-            let key = chats.new_conservation_key();
+            let key = chats.new_conversation_key();
             chats.conversations.insert(key, Conversation::new(key));
             Ok(key)
         }
@@ -547,14 +552,14 @@ fn process_chat_response(
 
     // Get the cost
     let this_cost = chat_response.cost;
-    let total_cost = match chats.try_borrow() {
+    let conversation_cost = match chats.try_borrow() {
         Err(err) => {
             print_to_console_s(format!(
                 "Failed to borrow chats `process_chat_response`: {err:?}"
             ));
             f64::NAN
         }
-        Ok(cas) => match cas.get_current_conversation() {
+        Ok(cas) => match cas.get_conversation(conversation_key) {
             Some(c) => c.responses.iter().fold(0.0, |a, b| a + b.1.cost) + this_cost,
             None => 0.0,
         },
@@ -570,7 +575,7 @@ fn process_chat_response(
         )),
         Ok(mut cas) => {
             cas.credit = credit;
-            cas.update_conversation(chat_response, conversation_key)?;
+            cas.update_conversation(chat_response, conversation_key, conversation_cost)?;
             if let Some(cc) = cas.current_conversation {
                 // There is a current conversation
                 if cc == conversation_key {
@@ -596,7 +601,7 @@ fn process_chat_response(
         }
     };
 
-    update_cost_display(&document, credit, total_cost, this_cost);
+    update_cost_display(&document, credit, this_cost);
 
     Ok(())
 }
@@ -876,7 +881,7 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
                 }
             };
         }
-        update_cost_display(&document, credit, 0.0, 0.0);
+        update_cost_display(&document, credit, 0.0);
     }) as Box<dyn Fn()>);
 
     clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
@@ -939,7 +944,7 @@ fn make_conversation_list(
     document: &Document,
     chats: Rc<RefCell<Chats>>,
 ) -> Result<Element, JsValue> {
-    // print_to_console("make_conservation_list 1");
+    // print_to_console("make_conversation_list 1");
 
     let conversation_list_div = document.create_element("div")?;
 
@@ -949,6 +954,7 @@ fn make_conversation_list(
         active: bool,
         current: bool,
         label: String,
+        cost: f64,
     }
 
     let mut conversation_displays: HashMap<usize, DisplayData> = HashMap::new();
@@ -971,9 +977,11 @@ fn make_conversation_list(
                     None => false,
                 };
                 let label = conversation.get_label();
+                let cost = conversation.cost;
                 conversation_displays.insert(
                     *key,
                     DisplayData {
+                        cost,
                         active,
                         current,
                         label,
@@ -991,21 +999,16 @@ fn make_conversation_list(
     for key in keys {
         let dd = conversation_displays.get(key).unwrap();
 
-        //...........conservation_displays
+        //...........conversation_displays
         // Each conversation has an element in this list
         let li = document.create_element("li")?;
 
-        // A radio button The current conversation is selected.
-        // Changing the selection will change the current
-        // conversation.
-        let current_radio = document.create_element("input")?;
-        let current_radio = current_radio.dyn_ref::<HtmlInputElement>().unwrap();
-        current_radio.set_attribute("type", "radio")?;
-        current_radio.set_attribute("name", "conversation_radio_buttons")?;
-        current_radio.set_id(format!("conversation_radio_{key}").as_str());
-        if dd.current {
-            current_radio.set_attribute("checked", "")?;
-        }
+        // Display the cost
+        let cost = format!("{:0>.1}\u{00A2}", dd.cost);
+        let cost_span = document.create_element("span")?;
+        cost_span.set_inner_html(cost.as_str());
+        cost_span.set_attribute("class", "cost_span")?;
+        li.append_child(&cost_span)?;
 
         let delete_button: HtmlImageElement = document
             .create_element("img")
@@ -1014,7 +1017,7 @@ fn make_conversation_list(
             .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
 
         delete_button.set_src("data/trash.png");
-        delete_button.set_id(format!("delete_conservation_{key}").as_str());
+        delete_button.set_id(format!("delete_conversation_{key}").as_str());
         delete_button.set_attribute("class", "delete_conversation_button")?;
 
         // Set event handler
@@ -1026,7 +1029,7 @@ fn make_conversation_list(
             // Get the ID off the clicked radio button
             let id = target_element.id();
             let id = id.as_str();
-            let id = &id["delete_conservation_".len()..];
+            let id = &id["delete_conversation_".len()..];
             match id.parse::<usize>() {
                 Err(err) => print_to_console_s(format!(
                     "Cannot parse {id} setting up delete conversation button: Error: {err}"
@@ -1054,6 +1057,17 @@ fn make_conversation_list(
 
         li.append_child(&delete_button)?;
 
+        // A radio button The current conversation is selected.
+        // Changing the selection will change the current
+        // conversation.
+        let current_radio = document.create_element("input")?;
+        let current_radio = current_radio.dyn_ref::<HtmlInputElement>().unwrap();
+        current_radio.set_attribute("type", "radio")?;
+        current_radio.set_attribute("name", "conversation_radio_buttons")?;
+        current_radio.set_id(format!("conversation_radio_{key}").as_str());
+        if dd.current {
+            current_radio.set_attribute("checked", "")?;
+        }
         let chats_clone = chats.clone();
         let current_radio_click = Closure::wrap(Box::new(move |event: web_sys::Event| {
             let chats = chats_clone.clone();

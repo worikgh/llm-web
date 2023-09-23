@@ -106,7 +106,7 @@ impl LlmWebPage for LoginDiv {
                             let head = document.body().unwrap();
                             head.set_attribute("data.token", token.as_str()).unwrap();
                             set_page(Pages::ChatDiv).unwrap();
-                            update_cost_display(&document, lr.credit, 0.0, 0.0);
+                            update_cost_display(&document, lr.credit, 0.0);
                         } else {
                             set_status(&document, "Login failed");
                             set_page(Pages::LoginDiv).unwrap();
