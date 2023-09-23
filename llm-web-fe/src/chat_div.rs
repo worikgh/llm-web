@@ -158,15 +158,10 @@ impl Chats {
         // Preconditions:
         // 1. There is a current conversation
         // 2. The `prompt` is not None in current conversation
-        print_to_console("update_current_conversation 1 ");
         let conversation = self.get_current_conversation_mut().unwrap();
-        print_to_console("update_current_conversation 1.1 ");
         let prompt: String = conversation.prompt.as_ref().unwrap().clone();
-        print_to_console("update_current_conversation 1.2 ");
         conversation.prompt = None;
         conversation.responses.push((prompt, response));
-        print_to_console("update_current_conversation 2 ");
-
         Ok(())
     }
 
@@ -239,7 +234,6 @@ pub struct ChatDiv;
 impl LlmWebPage for ChatDiv {
     /// Screen for the `chat` model interface
     fn initialise_page(document: &Document) -> Result<Element, JsValue> {
-        print_to_console("initialise_page 1");
         // Manage state of the conversations with the LLM
         let chats = Rc::new(RefCell::new(Chats::new()?));
 
@@ -303,7 +297,7 @@ impl LlmWebPage for ChatDiv {
         prompt_div.append_child(&submit_button)?;
 
         let side_panel_div = make_side_panel(document, chats.clone())?;
-        print_to_console("Made side panel initialise_page");
+
         // Put the page together
         chat_div.append_child(&conversation_div).unwrap();
         chat_div.append_child(&prompt_div).unwrap();
@@ -484,7 +478,6 @@ impl LlmWebPage for ChatDiv {
         add_css_rule(document, ".conversation_name", "margin-right", ".4em")?;
         add_css_rule(document, "ul", "list-style", "none")?;
 
-        print_to_console("initialise_page 2");
         Ok(chat_div)
     }
 }
@@ -496,7 +489,6 @@ fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
         .expect("Failed to get document");
 
     let new_side_panel_div = make_side_panel(&document, chats.clone())?;
-    print_to_console("Made side panel remake");
     let old_side_panel = document
         .get_element_by_id("side-panel-div")
         .ok_or_else(|| JsValue::from_str("Failed to get side panel."))?;
@@ -515,10 +507,6 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
             return Err(JsValue::from_str(result.as_str()));
         }
         Ok(mut chats) => {
-            // print_to_console_s(format!(
-            //     "make_new_conversation 1.1: length {}",
-            //     chats.conversations.len()
-            // ));
             let key = chats.new_conservation_key();
             chats.conversations.insert(key, Conversation::new());
             Ok(key)
@@ -606,7 +594,6 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
         match make_new_conversation(chats_clone.clone()) {
             Ok(key) => {
                 set_current_conversation(chats_clone.clone(), key);
-                print_to_console_s(format!("New conversation: {key}"));
                 update_response_screen(chats_clone.clone());
             }
             Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
@@ -623,7 +610,7 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     // Experimental button
     let clear_style = new_button(document, "clear_style", "Style Experiment")?;
     let resp_closure = Closure::wrap(Box::new(|| {
-        print_to_console("rep_closure 1");
+        // print_to_console("rep_closure 1");
         let document = window()
             .and_then(|win| win.document())
             .expect("Failed to get document");
@@ -646,8 +633,6 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     side_panel_div.append_child(&clear_style)?;
 
     let conversation_list = make_conversation_list(document, chats.clone())?;
-    print_to_console("make_side_panel: Got conversation list");
-
     side_panel_div.append_child(&conversation_list)?;
 
     Ok(side_panel_div)
@@ -668,10 +653,6 @@ fn update_response_screen(chats: Rc<RefCell<Chats>>) {
                 result_div.set_inner_html("");
                 "".to_string()
             };
-            print_to_console_s(format!(
-                "update_response_scren key: {:?}",
-                chats.current_conversation
-            ));
             result_div.set_inner_html(display.as_str());
         }
     }
@@ -683,7 +664,6 @@ fn make_conversation_list(
     chats: Rc<RefCell<Chats>>,
 ) -> Result<Element, JsValue> {
     // print_to_console("make_conservation_list 1");
-    print_to_console("make_conversation_list 1");
 
     let conversation_list_div = document.create_element("div")?;
 
@@ -708,7 +688,7 @@ fn make_conversation_list(
             for (key, conversation) in conversations.iter() {
                 // Is this converstion active?
                 // Is this the currentconversation?
-                print_to_console("make_side_panel 1.2 in loop");
+
                 let active = conversation.prompt.is_some();
                 let current = match chats.current_conversation {
                     Some(c) => c == *key,
@@ -729,15 +709,12 @@ fn make_conversation_list(
 
     // Now buld the HTML data
     let ul = document.create_element("ul")?;
-    print_to_console_s(format!(
-        "conversation_displays.len(): {}",
-        conversation_displays.len()
-    ));
+
     let mut keys: Vec<&usize> = conversation_displays.keys().collect();
     keys.sort();
     for key in keys {
         let dd = conversation_displays.get(key).unwrap();
-        print_to_console("make_side_panel 1.3 Create widget loop");
+
         //...........conservation_displays
         // Each conversation has an element in this list
         let li = document.create_element("li")?;
@@ -762,7 +739,7 @@ fn make_conversation_list(
 
             // Get the ID off the clicked radio button
             let id = target_element.id();
-            print_to_console_s(format!("Radio: {id}"));
+
             // Radio: conversation_radio_1
             let id = id.as_str();
             let id = &id["conversation_radio_".len()..];

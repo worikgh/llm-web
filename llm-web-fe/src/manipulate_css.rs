@@ -184,7 +184,6 @@ pub fn add_css_rule<T: Into<String>>(
 pub fn clear_css(document: &Document) -> Result<(), JsValue> {
     // See: https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleSheet/deleteRule
     // print_to_console("clear_css 1");
-    // print_to_console("clear_css 1");
     let style_sheets: StyleSheetList = document.style_sheets();
     let lim_i = style_sheets.length();
     for i in 0..lim_i {
