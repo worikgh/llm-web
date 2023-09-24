@@ -150,6 +150,7 @@ impl Chats {
             }
         }
     }
+
     // The current conversation is where the focus of the user is. It
     // must be:
     // * initialised when a conversation starts .
@@ -229,6 +230,11 @@ impl Chats {
     /// Get a conversation to read
     fn get_conversation(&self, current_conversation: usize) -> Option<&Conversation> {
         self.conversations.get(&current_conversation)
+    }
+
+    /// Check that a conversation exists
+    fn conversation_exists(&self, key: usize) -> bool {
+        self.conversations.get(&key).is_some()
     }
 }
 
@@ -542,7 +548,22 @@ fn process_chat_response(
     chats: Rc<RefCell<Chats>>,
     conversation_key: usize,
 ) -> Result<(), JsValue> {
-    //print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
+    print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
+
+    // Check if conversation has been deleted while the LLM was working
+    if !match chats.try_borrow() {
+        Ok(chats_ref) => chats_ref.conversation_exists(conversation_key),
+        Err(err) => {
+            print_to_console_s(format!(
+                "Failed to borrow chats `process_chat_response`: {err:?}"
+            ));
+            false
+        }
+    } {
+        return Err(JsValue::from_str(
+            "Conversation deleted while waiting for response?",
+        ));
+    }
 
     // Save this to display it
     let credit = chat_response.credit;
@@ -783,6 +804,7 @@ fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
 
     //....
 }
+
 /// New conversation callback
 fn new_conversation_callback(chats_clone: Rc<RefCell<Chats>>) {
     match make_new_conversation(chats_clone.clone()) {
@@ -886,6 +908,7 @@ fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
         }
     };
 }
+
 /// Called to construct the messages for a request.  Each interaction
 /// with the LLM includes a history of prevous interactions.  In the
 /// general case this is the history of the current conversation.
