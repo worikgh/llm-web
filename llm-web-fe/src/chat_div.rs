@@ -749,6 +749,130 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
     remake_side_panel(chats.clone()).unwrap();
 }
 
+/// Callback for conversation select
+fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
+    let target = event.target().unwrap();
+    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+
+    // Get the ID off the clicked radio button
+    let id = target_element.id();
+
+    // Radio: conversation_radio_1
+    let id = id.as_str();
+    let id = &id["conversation_radio_".len()..];
+    match id.parse() {
+        Ok(key) => {
+            // clear_current_conversation();
+            match chats_clone.try_borrow_mut() {
+                Ok(mut chats) => match chats.set_current_conversation(key) {
+                    Ok(()) => (),
+                    Err(_err) => {
+                        print_to_console_s(format!("Failed to set current conversation to: {key}"))
+                    }
+                },
+                Err(_err) => {
+                    print_to_console("Cannot borrow_mut chats current_radio_click handler")
+                }
+            };
+        }
+        Err(err) => print_to_console_s(format!("Cannot parse id: {id}. Error: {err:?}")),
+    };
+
+    // Redraw the response screen screen
+    update_response_screen(chats_clone.clone());
+    //....
+}
+/// New conversation callback
+fn new_conversation_callback(chats_clone: Rc<RefCell<Chats>>) {
+    match make_new_conversation(chats_clone.clone()) {
+        Ok(key) => {
+            set_current_conversation(chats_clone.clone(), key);
+            update_response_screen(chats_clone.clone());
+        }
+        Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
+    };
+    match remake_side_panel(chats_clone.clone()) {
+        Ok(()) => (),
+        Err(err) => print_to_console_s(format!("Failed to remake side panel: {err:?}")),
+    };
+}
+
+/// Style experiment button
+fn style_experiment_cb() {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let mut cs_rules = get_css_rules(&document).unwrap();
+    cs_rules
+        .insert("#side-panel-div", "background-color", "aliceblue")
+        .unwrap();
+    match clear_css(&document) {
+        Ok(()) => (),
+        Err(err) => print_to_console_s(format!(
+            "Failed clear_css {}:{}",
+            err.as_string().unwrap_or("<UNKNOWN>".to_string()),
+            err.js_typeof().as_string().unwrap_or("".to_string()),
+        )),
+    };
+    set_css_rules(&document, &cs_rules).unwrap();
+}
+
+/// Calcel button callback
+fn cancel_cb(chats_clone: Rc<RefCell<Chats>>) {
+    match chats_clone.try_borrow_mut() {
+        Ok(mut m_chats) => {
+            match m_chats.get_current_conversation() {
+                Some(cc) => match &cc.request {
+                    Some(xhr) => {
+                        xhr.abort().unwrap();
+                        if let Some(cc) = m_chats.get_current_conversation_mut() {
+                            cc.prompt = None;
+                            cc.request = None;
+                        } else {
+                            print_to_console("Cannot get current conversation for abort");
+                        }
+                    }
+                    None => print_to_console("Got no xhr"),
+                },
+                None => print_to_console("Got no cc"),
+            };
+        }
+        Err(err) => print_to_console_s(format!(
+            "Failed to borrow chats `make_conversation_list` {err:?}"
+        )),
+    };
+}
+
+/// Callback for conversation delete button
+fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
+    let target = event.target().unwrap();
+    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+
+    // Get the ID off the clicked radio button
+    let id = target_element.id();
+    let id = id.as_str();
+    let id = &id["delete_conversation_".len()..];
+    match id.parse::<usize>() {
+        Err(err) => print_to_console_s(format!(
+            "Cannot parse {id} setting up delete conversation button: Error: {err}"
+        )),
+        Ok(key) => {
+            print_to_console_s(format!("Delete conversation {id}"));
+            match chats_clone.try_borrow_mut() {
+                Err(_err) => {
+                    print_to_console("Delete conversation handler faied to borrow mut chats")
+                }
+                Ok(mut chats) => {
+                    chats.delete_conversation(key);
+                }
+            };
+            update_response_screen(chats_clone.clone());
+            if let Err(_err) = remake_side_panel(chats_clone.clone()) {
+                print_to_console("Delete conversation handler remake the side panel");
+            }
+        }
+    };
+}
 /// Called to construct the messages for a request.  Each interaction
 /// with the LLM includes a history of prevous interactions.  In the
 /// general case this is the history of the current conversation.
@@ -857,53 +981,13 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     )?)?;
     side_panel_div.append_child(&select_element)?;
 
-    // The clear response button
-    // Make a button that clears the responses
-    let clear_response = new_button(document, "clear_response", "Clear Conversation")?;
-    let ss = chats.clone();
-    let clear_conversation_closure = Closure::wrap(Box::new(move || {
-        let document = window()
-            .and_then(|win| win.document())
-            .expect("Failed to get document");
-        let result_div = document.get_element_by_id("response_div").unwrap();
-        result_div.set_inner_html("");
-        let s = ss.clone();
-        let credit: f64;
-        {
-            match s.try_borrow_mut() {
-                Ok(mut c) => {
-                    c.current_conversation = None;
-                    credit = c.credit;
-                }
-                Err(err) => {
-                    credit = f64::NAN;
-                    print_to_console_s(format!("Failed to borrow chats: {err:?}"));
-                }
-            };
-        }
-        update_cost_display(&document, credit, 0.0);
-    }) as Box<dyn Fn()>);
-
-    clear_response.set_onclick(Some(clear_conversation_closure.as_ref().unchecked_ref()));
-    clear_conversation_closure.forget();
-    side_panel_div.append_child(&clear_response)?;
-
     // New conversation button
     let new_conversation = new_button(document, "new_conversation", "New Conversation")?;
     let chats_clone = chats.clone();
     let new_conversation_closure = Closure::wrap(Box::new(move || {
-        match make_new_conversation(chats_clone.clone()) {
-            Ok(key) => {
-                set_current_conversation(chats_clone.clone(), key);
-                update_response_screen(chats_clone.clone());
-            }
-            Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
-        };
-        match remake_side_panel(chats_clone.clone()) {
-            Ok(()) => (),
-            Err(err) => print_to_console_s(format!("Failed to remake side panel: {err:?}")),
-        };
+        new_conversation_callback(chats_clone.clone());
     }) as Box<dyn Fn()>);
+
     new_conversation.set_onclick(Some(new_conversation_closure.as_ref().unchecked_ref()));
     new_conversation_closure.forget();
 
@@ -911,24 +995,9 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     // Experimental button
     let clear_style = new_button(document, "clear_style", "Style Experiment")?;
     let resp_closure = Closure::wrap(Box::new(|| {
-        // print_to_console("rep_closure 1");
-        let document = window()
-            .and_then(|win| win.document())
-            .expect("Failed to get document");
-        let mut cs_rules = get_css_rules(&document).unwrap();
-        cs_rules
-            .insert("#side-panel-div", "background-color", "aliceblue")
-            .unwrap();
-        match clear_css(&document) {
-            Ok(()) => (),
-            Err(err) => print_to_console_s(format!(
-                "Failed clear_css {}:{}",
-                err.as_string().unwrap_or("<UNKNOWN>".to_string()),
-                err.js_typeof().as_string().unwrap_or("".to_string()),
-            )),
-        };
-        set_css_rules(&document, &cs_rules).unwrap();
+        style_experiment_cb();
     }) as Box<dyn Fn()>);
+
     clear_style.set_onclick(Some(resp_closure.as_ref().unchecked_ref()));
     resp_closure.forget();
     side_panel_div.append_child(&clear_style)?;
@@ -958,7 +1027,7 @@ fn make_conversation_list(
     }
 
     let mut conversation_displays: HashMap<usize, DisplayData> = HashMap::new();
-    match chats.try_borrow() {
+    match chats.clone().try_borrow() {
         Err(_err) => {
             return Err(JsValue::from_str(
                 "Cannot borrow chats.  make_conversation_list",
@@ -1023,33 +1092,7 @@ fn make_conversation_list(
         // Set event handler
         let chats_clone = chats.clone();
         let event_handler = Closure::wrap(Box::new(move |event: Event| {
-            let target = event.target().unwrap();
-            let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
-
-            // Get the ID off the clicked radio button
-            let id = target_element.id();
-            let id = id.as_str();
-            let id = &id["delete_conversation_".len()..];
-            match id.parse::<usize>() {
-                Err(err) => print_to_console_s(format!(
-                    "Cannot parse {id} setting up delete conversation button: Error: {err}"
-                )),
-                Ok(key) => {
-                    print_to_console_s(format!("Delete conversation {id}"));
-                    match chats_clone.try_borrow_mut() {
-                        Err(_err) => print_to_console(
-                            "Delete conversation handler faied to borrow mut chats",
-                        ),
-                        Ok(mut chats) => {
-                            chats.delete_conversation(key);
-                        }
-                    };
-                    update_response_screen(chats_clone.clone());
-                    if let Err(_err) = remake_side_panel(chats_clone.clone()) {
-                        print_to_console("Delete conversation handler remake the side panel");
-                    }
-                }
-            };
+            delete_conversation_cb(event, chats_clone.clone());
         }) as Box<dyn FnMut(_)>);
 
         delete_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
@@ -1070,38 +1113,9 @@ fn make_conversation_list(
         }
         let chats_clone = chats.clone();
         let current_radio_click = Closure::wrap(Box::new(move |event: web_sys::Event| {
-            let chats = chats_clone.clone();
-            let target = event.target().unwrap();
-            let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
-
-            // Get the ID off the clicked radio button
-            let id = target_element.id();
-
-            // Radio: conversation_radio_1
-            let id = id.as_str();
-            let id = &id["conversation_radio_".len()..];
-            match id.parse() {
-                Ok(key) => {
-                    // clear_current_conversation();
-                    match chats.try_borrow_mut() {
-                        Ok(mut chats) => match chats.set_current_conversation(key) {
-                            Ok(()) => (),
-                            Err(_err) => print_to_console_s(format!(
-                                "Failed to set current conversation to: {key}"
-                            )),
-                        },
-                        Err(_err) => {
-                            print_to_console("Cannot borrow_mut chats current_radio_click handler")
-                        }
-                    };
-                }
-                Err(err) => print_to_console_s(format!("Cannot parse id: {id}. Error: {err:?}")),
-            };
-
-            // Redraw the response screen screen
-            update_response_screen(chats.clone());
-            //....
+            select_conversation_cb(event, chats_clone.clone());
         }) as Box<dyn FnMut(Event)>);
+
         current_radio.set_onclick(Some(current_radio_click.as_ref().unchecked_ref()));
         current_radio_click.forget();
         li.append_child(current_radio)?;
@@ -1128,35 +1142,10 @@ fn make_conversation_list(
             cancel_button.set_attribute("class", "prompt_cancel_button")?;
             li.append_child(&cancel_button)?;
 
-            let arc_chats_event_handler_copy = chats.clone();
+            let chats_clone = chats.clone();
             let event_handler = Closure::wrap(Box::new(move |_event: Event| {
-                {
-                    match arc_chats_event_handler_copy.try_borrow_mut() {
-                        Ok(mut m_chats) => {
-                            match m_chats.get_current_conversation() {
-                                Some(cc) => match &cc.request {
-                                    Some(xhr) => {
-                                        xhr.abort().unwrap();
-                                        if let Some(cc) = m_chats.get_current_conversation_mut() {
-                                            cc.prompt = None;
-                                            cc.request = None;
-                                        } else {
-                                            print_to_console(
-                                                "Cannot get current conversation for abort",
-                                            );
-                                        }
-                                    }
-                                    None => print_to_console("Got no xhr"),
-                                },
-                                None => print_to_console("Got no cc"),
-                            };
-                        }
-                        Err(err) => print_to_console_s(format!(
-                            "Failed to borrow chats `make_conversation_list` {err:?}"
-                        )),
-                    };
-                }
-                remake_side_panel(arc_chats_event_handler_copy.clone()).unwrap();
+                cancel_cb(chats_clone.clone());
+                remake_side_panel(chats_clone.clone()).unwrap();
             }) as Box<dyn FnMut(_)>);
 
             cancel_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
