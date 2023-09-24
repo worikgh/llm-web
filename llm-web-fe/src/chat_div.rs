@@ -666,16 +666,24 @@ fn clear_response_screen() {
     result_div.set_inner_html("");
 }
 /// Display the current conversation or clear the response screen if
-/// there is none
+/// there is none:
 fn update_response_screen(conversation: &Conversation) {
+    print_to_console("update_response_screen 1");
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
     let result_div = document.get_element_by_id("response_div").unwrap();
+    let results = result_div.children();
+    for i in 0..results.length() {
+        let item = results.item(i).unwrap();
+        result_div.remove_child(&item).unwrap();
+    }
     let display = conversation.get_response_display().unwrap();
+
     result_div.append_child(&display).unwrap();
     // Scroll to the bottom
     result_div.set_scroll_top(result_div.scroll_height());
+    print_to_console("update_response_screen 2");
 }
 
 /// The callback for abort fetching a response
@@ -810,7 +818,7 @@ fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
     let id = &id["conversation_radio_".len()..];
     match id.parse() {
         Ok(key) => {
-            // clear_current_conversation();
+            // `key` is the selected conversation
             match chats_clone.try_borrow_mut() {
                 Ok(mut chats) => match chats.set_current_conversation(key) {
                     Ok(()) => (),
