@@ -552,7 +552,9 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
     match chats.try_borrow_mut() {
         Err(err) => {
             let result = format!("Failed to borrow chats making a new conversation: {err}");
-            return Err(JsValue::from_str(result.as_str()));
+            print_to_console_s(result);
+            panic![];
+            //return Err(JsValue::from_str(result.as_str()));
         }
         Ok(mut chats) => {
             let key = chats.new_conversation_key();
@@ -567,12 +569,16 @@ fn set_current_conversation(chats: Rc<RefCell<Chats>>, key: usize) {
     if let Ok(mut chats) = chats.try_borrow_mut() {
         match chats.set_current_conversation(key) {
             Ok(()) => (),
-            Err(err) => print_to_console_s(format!(
-                "Failed to set current conversation to: {key}. Er: {err:?}"
-            )),
+            Err(err) => {
+                print_to_console_s(format!(
+                    "Failed to set current conversation to: {key}. Er: {err:?}"
+                ));
+                panic![];
+            }
         };
     } else {
         print_to_console("Failed to borrow chats mut set_currrent_conversation");
+        panic![];
     }
 }
 
@@ -591,7 +597,8 @@ fn process_chat_response(
             print_to_console_s(format!(
                 "Failed to borrow chats `process_chat_response`: {err:?}"
             ));
-            false
+            panic![];
+            //false
         }
     } {
         return Err(JsValue::from_str(
@@ -612,7 +619,8 @@ fn process_chat_response(
             print_to_console_s(format!(
                 "Failed to borrow chats `process_chat_response`: {err:?}"
             ));
-            f64::NAN
+            panic![]
+            // f64::NAN
         }
         Ok(cas) => match cas.get_conversation(conversation_key) {
             Some(c) => c.responses.iter().fold(0.0, |a, b| a + b.1.cost) + this_cost,
@@ -625,9 +633,12 @@ fn process_chat_response(
         .expect("Failed to get document");
 
     match chats.try_borrow_mut() {
-        Err(err) => print_to_console_s(format!(
-            "Failed to borrow chats `process_chat_response`: {err:?}"
-        )),
+        Err(err) => {
+            print_to_console_s(format!(
+                "Failed to borrow chats `process_chat_response`: {err:?}"
+            ));
+            panic![];
+        }
         Ok(mut cas) => {
             cas.credit = credit;
             cas.update_conversation(chat_response, conversation_key, conversation_cost)?;
@@ -636,18 +647,12 @@ fn process_chat_response(
                 if cc == conversation_key {
                     // This data returned is for the current
                     // conversation So update display
-                    // Get response area and update the response
-                    let result_div = document.get_element_by_id("response_div").unwrap();
-
                     if let Some(c) = cas.get_conversation(conversation_key) {
                         // TODO: Is this unwrap OK?
-                        let d = c.get_response_display().unwrap();
-                        result_div.append_child(&d)?;
+                        update_response_screen(c);
                     } else {
                         panic!("Cannot get coversation");
                     };
-                    // Scroll to the bottom
-                    result_div.set_scroll_top(result_div.scroll_height());
                 }
             }
         }
@@ -665,6 +670,7 @@ fn clear_response_screen() {
     let result_div = document.get_element_by_id("response_div").unwrap();
     result_div.set_inner_html("");
 }
+
 /// Display the current conversation or clear the response screen if
 /// there is none:
 fn update_response_screen(conversation: &Conversation) {
@@ -672,17 +678,41 @@ fn update_response_screen(conversation: &Conversation) {
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
-    let result_div = document.get_element_by_id("response_div").unwrap();
-    let results = result_div.children();
-    for i in 0..results.length() {
-        let item = results.item(i).unwrap();
-        result_div.remove_child(&item).unwrap();
-    }
-    let display = conversation.get_response_display().unwrap();
 
-    result_div.append_child(&display).unwrap();
+    let response_div = document.get_element_by_id("response_div").unwrap();
+    // Clear the children
+    let response_childs = response_div.children();
+    print_to_console_s(format!(
+        "update_response: child count a: {}",
+        response_childs.length()
+    ));
+    for i in 0..response_childs.length() {
+        let child = response_childs.item(i).unwrap();
+        response_div.remove_child(&child).unwrap();
+    }
+
+    let response_childs = response_div.children();
+    print_to_console_s(format!(
+        "update_response: child count b: {}",
+        response_childs.length()
+    ));
+
+    let contents = conversation.get_response_display().unwrap();
+    print_to_console_s(format!(
+        "update_response: contens count before: {}",
+        contents.children().length()
+    ));
+
+    response_div.append_child(&contents).unwrap();
+
+    let response_childs = response_div.children();
+    print_to_console_s(format!(
+        "update_response: child count c: {}",
+        response_childs.length()
+    ));
+
     // Scroll to the bottom
-    result_div.set_scroll_top(result_div.scroll_height());
+    response_div.set_scroll_top(response_div.scroll_height());
     print_to_console("update_response_screen 2");
 }
 
@@ -776,7 +806,8 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
             print_to_console(
                 "Failed borrowing chats to get current conversation for request callback",
             );
-            return;
+            panic![];
+            //            return;
         }
         Ok(chats) => match chats.current_conversation {
             Some(cc) => cc,
@@ -784,7 +815,7 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
                 print_to_console(
                     "Failed borrowing chats to get current conversation for request callback",
                 );
-                return;
+                panic![]; //                return;
             }
         },
     };
@@ -798,7 +829,10 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
     )
     .unwrap();
     match chats.try_borrow_mut() {
-        Err(err) => print_to_console_s(format!("Failed to borrow chats `chat_submit_cb`: {err:?}")),
+        Err(err) => {
+            print_to_console_s(format!("Failed to borrow chats `chat_submit_cb`: {err:?}"));
+            panic![];
+        }
         Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
     };
 
@@ -823,16 +857,24 @@ fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
                 Ok(mut chats) => match chats.set_current_conversation(key) {
                     Ok(()) => (),
                     Err(_err) => {
-                        print_to_console_s(format!("Failed to set current conversation to: {key}"))
+                        print_to_console_s(format!("Failed to set current conversation to: {key}"));
+                        panic![];
                     }
                 },
                 Err(_err) => {
-                    print_to_console("Cannot borrow_mut chats current_radio_click handler")
+                    print_to_console("Cannot borrow_mut chats current_radio_click handler");
+                    panic![];
                 }
             };
             // Redraw the response screen
             match chats_clone.try_borrow() {
-                Ok(chats_ref) => update_response_screen(chats_ref.conversations.get(&key).unwrap()),
+                // Forced unwrap OK because `key` is current conversation
+                Ok(chats_ref) => {
+                    let conv = chats_ref.conversations.get(&key).unwrap();
+                    print_to_console("select_conversation_cn Before display");
+                    update_response_screen(conv);
+                    print_to_console("select_conversation_cn After display");
+                }
                 Err(err) => print_to_console_s(format!(
                     "select_conversation_cb: Failed to clone chats: {err:?}"
                 )),
@@ -851,7 +893,9 @@ fn new_conversation_callback(chats_clone: Rc<RefCell<Chats>>) {
             set_current_conversation(chats_clone.clone(), key);
             // Make the new conversation the current.  FIXME:  This is convoluted
             match chats_clone.try_borrow() {
-                Ok(chats_ref) => update_response_screen(chats_ref.conversations.get(&key).unwrap()),
+                Ok(chats_ref) => {
+                    update_response_screen(chats_ref.conversations.get(&key).unwrap());
+                }
                 Err(err) => print_to_console_s(format!(
                     "new_conversation_callback: Failed to clone chats: {err:?}"
                 )),
@@ -905,9 +949,12 @@ fn cancel_cb(chats_clone: Rc<RefCell<Chats>>) {
                 None => print_to_console("Got no cc"),
             };
         }
-        Err(err) => print_to_console_s(format!(
-            "Failed to borrow chats `make_conversation_list` {err:?}"
-        )),
+        Err(err) => {
+            print_to_console_s(format!(
+                "Failed to borrow chats `make_conversation_list` {err:?}"
+            ));
+            panic![];
+        }
     };
 }
 
@@ -928,7 +975,8 @@ fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
             // `key` is the conversation to delete
             match chats_clone.try_borrow_mut() {
                 Err(_err) => {
-                    print_to_console("Delete conversation handler faied to borrow mut chats")
+                    print_to_console("Delete conversation handler faied to borrow mut chats");
+                    panic![];
                 }
                 Ok(mut chats_mut) => {
                     if let Some(cc) = chats_mut.current_conversation {
@@ -964,7 +1012,10 @@ fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> 
     });
 
     match chats.try_borrow_mut() {
-        Err(err) => print_to_console_s(format!("Failed to borrow chats `build_messages` {err:?}")),
+        Err(err) => {
+            print_to_console_s(format!("Failed to borrow chats `build_messages` {err:?}"));
+            panic![];
+        }
         Ok(mut chats) => {
             // Then the history of the conversation
             match chats.get_current_conversation() {
