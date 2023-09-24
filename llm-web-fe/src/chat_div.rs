@@ -59,16 +59,43 @@ impl Conversation {
     /// Get a display to put in response area.  Transform the text
     /// into HTML, and put class definitions in for prompts and
     /// responses so they can be styled
-    fn get_response_display(&self) -> String {
-        let mut result = String::new();
+    fn get_response_display(&self) -> Result<Element, JsValue> {
+        let document = window()
+            .and_then(|win| win.document())
+            .expect("Failed to get document");
+        let result = document.create_element("UL")?;
+        result.set_id("responses_ul");
         for i in self.responses.iter() {
+            let li = document.create_element("LI")?;
+
             let prompt = i.0.as_str();
             let prompt = text_for_html(prompt);
             let respone = i.1.response.as_str();
-            let respone = text_for_html(respone);
-            result = format!("{result}<br/><span class='prompt'>{} {prompt}</span><br/><span class='response'>{respone}</span>",i.1.model);
+            let response = text_for_html(respone);
+            let meta = i.1.model.as_str();
+
+            let meta_div = document.create_element("DIV")?;
+            meta_div.set_attribute("class", "meta_div")?;
+            meta_div.set_inner_html(meta);
+
+            let display_prompt_div = document.create_element("DIV")?;
+            display_prompt_div.set_attribute("class", "prompt")?;
+            display_prompt_div.set_inner_html(&prompt);
+
+            let display_response_div = document.create_element("DIV")?;
+            display_response_div.set_attribute("class", "response")?;
+            display_response_div.set_inner_html(&response);
+
+            let pr_div = document.create_element("DIV")?;
+            pr_div.set_attribute("class", "pr_div")?;
+            pr_div.append_child(&display_prompt_div)?;
+            pr_div.append_child(&display_response_div)?;
+
+            li.append_child(&meta_div)?;
+            li.append_child(&pr_div)?;
+            result.append_child(&li)?;
         }
-        result
+        Ok(result)
     }
 
     /// Get the label to put on this conversation.  The text to
@@ -509,6 +536,13 @@ impl LlmWebPage for ChatDiv {
         add_css_rule(document, ".conversation_name", "margin-right", ".4em")?;
         add_css_rule(document, "ul", "list-style", "none")?;
 
+        add_css_rule(document, ".meta_div", "width", "20%")?;
+        add_css_rule(document, ".meta_div", "font-size", "small")?;
+        add_css_rule(document, ".meta_div", "padding", "1em")?;
+        add_css_rule(document, ".meta_div", "margin", "1em")?;
+        add_css_rule(document, ".pr_div", "width", "80%")?;
+        add_css_rule(document, ".pr_div", "margin-right", "1em")?;
+
         Ok(chat_div)
     }
 }
@@ -604,17 +638,14 @@ fn process_chat_response(
                     // conversation So update display
                     // Get response area and update the response
                     let result_div = document.get_element_by_id("response_div").unwrap();
-                    let display: String = if let Some(c) = cas.get_conversation(conversation_key) {
-                        c.get_response_display()
-                    } else {
-                        print_to_console_s(format!(
-                            "Cannot get the current conversation: {conversation_key}"
-                        ));
-                        result_div.set_inner_html("");
-                        "".to_string()
-                    };
-                    result_div.set_inner_html(display.as_str());
 
+                    if let Some(c) = cas.get_conversation(conversation_key) {
+                        // TODO: Is this unwrap OK?
+                        let d = c.get_response_display().unwrap();
+                        result_div.append_child(&d)?;
+                    } else {
+                        panic!("Cannot get coversation");
+                    };
                     // Scroll to the bottom
                     result_div.set_scroll_top(result_div.scroll_height());
                 }
@@ -641,8 +672,8 @@ fn update_response_screen(conversation: &Conversation) {
         .and_then(|win| win.document())
         .expect("Failed to get document");
     let result_div = document.get_element_by_id("response_div").unwrap();
-    let display: String = conversation.get_response_display();
-    result_div.set_inner_html(display.as_str());
+    let display = conversation.get_response_display().unwrap();
+    result_div.append_child(&display).unwrap();
     // Scroll to the bottom
     result_div.set_scroll_top(result_div.scroll_height());
 }
