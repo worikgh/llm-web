@@ -1,6 +1,8 @@
 # Features to Add
 
-* conversation metadata: Requires modification to ChatResponse to send data like model and temperature back.  The model is available back from the response, which makes sense because the model asked for is a sbset of the model used: ask for "gpt-3.5-turbo" and "gpt-3.5-turbo-0613" will be used.  The temperature must be kept.  This metadata should be per response, and be displayed in the response display
+* conversation metadata: The model is available back from the response, .  The temperature must be kept.  This metadata should be per response, and be displayed in the response display.  A time?
+* Fonts: I am not in control of the fonts
+* Need to have the initial purpose prompt
 * Implement temperature
 * Recover from invalid session inside chat_div
 * Replay a conversation (starting a new conversation?)
@@ -8,4 +10,4 @@
 
 # BUG(s)
 
-* "clear conversations" button is deprecated
+* `update_response_screen` Needs error checking
