@@ -606,26 +606,22 @@ fn process_chat_response(
     Ok(())
 }
 
-/// Display the current conversation or clear the response screen if
-/// there is none
-fn update_response_screen(chats: Rc<RefCell<Chats>>) {
+fn clear_response_screen() {
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
     let result_div = document.get_element_by_id("response_div").unwrap();
-    match chats.try_borrow() {
-        Err(_err) => print_to_console("Failed to borrow chats: update_response_screen"),
-
-        Ok(chats) => {
-            let display: String = if let Some(c) = chats.get_current_conversation() {
-                c.get_response_display()
-            } else {
-                result_div.set_inner_html("");
-                "".to_string()
-            };
-            result_div.set_inner_html(display.as_str());
-        }
-    }
+    result_div.set_inner_html("");
+}
+/// Display the current conversation or clear the response screen if
+/// there is none
+fn update_response_screen(conversation: &Conversation) {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let result_div = document.get_element_by_id("response_div").unwrap();
+    let display: String = conversation.get_response_display();
+    result_div.set_inner_html(display.as_str());
     // Scroll to the bottom
     result_div.set_scroll_top(result_div.scroll_height());
 }
@@ -774,12 +770,17 @@ fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
                     print_to_console("Cannot borrow_mut chats current_radio_click handler")
                 }
             };
+            // Redraw the response screen
+            match chats_clone.try_borrow() {
+                Ok(chats_ref) => update_response_screen(chats_ref.conversations.get(&key).unwrap()),
+                Err(err) => print_to_console_s(format!(
+                    "select_conversation_cb: Failed to clone chats: {err:?}"
+                )),
+            }
         }
         Err(err) => print_to_console_s(format!("Cannot parse id: {id}. Error: {err:?}")),
     };
 
-    // Redraw the response screen screen
-    update_response_screen(chats_clone.clone());
     //....
 }
 /// New conversation callback
@@ -787,10 +788,16 @@ fn new_conversation_callback(chats_clone: Rc<RefCell<Chats>>) {
     match make_new_conversation(chats_clone.clone()) {
         Ok(key) => {
             set_current_conversation(chats_clone.clone(), key);
-            update_response_screen(chats_clone.clone());
+            // Make the new conversation the current.  FIXME:  This is convoluted
+            match chats_clone.try_borrow() {
+                Ok(chats_ref) => update_response_screen(chats_ref.conversations.get(&key).unwrap()),
+                Err(err) => print_to_console_s(format!(
+                    "new_conversation_callback: Failed to clone chats: {err:?}"
+                )),
+            }
         }
         Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
-    };
+    }
     match remake_side_panel(chats_clone.clone()) {
         Ok(()) => (),
         Err(err) => print_to_console_s(format!("Failed to remake side panel: {err:?}")),
@@ -857,16 +864,22 @@ fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
             "Cannot parse {id} setting up delete conversation button: Error: {err}"
         )),
         Ok(key) => {
-            print_to_console_s(format!("Delete conversation {id}"));
+            // `key` is the conversation to delete
             match chats_clone.try_borrow_mut() {
                 Err(_err) => {
                     print_to_console("Delete conversation handler faied to borrow mut chats")
                 }
-                Ok(mut chats) => {
-                    chats.delete_conversation(key);
+                Ok(mut chats_mut) => {
+                    if let Some(cc) = chats_mut.current_conversation {
+                        if cc == key {
+                            // Deleting current conversation
+                            clear_response_screen();
+                        }
+                    }
+                    chats_mut.delete_conversation(key);
                 }
             };
-            update_response_screen(chats_clone.clone());
+
             if let Err(_err) = remake_side_panel(chats_clone.clone()) {
                 print_to_console("Delete conversation handler remake the side panel");
             }
