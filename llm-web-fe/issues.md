@@ -9,4 +9,3 @@
 # BUG(s)
 
 * "clear conversations" button is deprecated
-* If you delete a conversation while it is active there is a crash
