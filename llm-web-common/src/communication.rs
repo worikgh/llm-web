@@ -105,6 +105,7 @@ pub struct ChatResponse {
     // For every chat response there is a (possibly zero) cost.  Not
     // contemplating a negative cost, but it is possible.
     pub cost: f64,
+
     // The response: OpenAI can return an array of responses,
     // essentially offering many opinions.  This is controlled with a
     // parameter in the request.  Here, for now, only one will be
@@ -112,6 +113,9 @@ pub struct ChatResponse {
     // "content".  The "role" is always 'assistant' (test this!).  SO
     // just pass back one string for the response
     pub response: String,
+
+    /// The model that the LLM used.  It might not be the model asked for.
+    pub model: String,
 }
 
 // Display for CommType

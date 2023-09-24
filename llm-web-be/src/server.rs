@@ -240,6 +240,7 @@ impl AppBackend {
             "temperature": prompt.temperature,
                 });
 
+            // Send the request to the LLM
             let response_result: Result<(HashMap<String, String>, ChatRequestInfo), Message> =
                 tokio::task::spawn_blocking(
                     move || match openai_interface::ApiInterface::send_chat(api_key.as_str(), &data)
@@ -272,6 +273,7 @@ impl AppBackend {
             eprintln!("process_chat_request 4");
 
             let cost = Self::cost(chat_response.1.usage, chat_response.1.model.as_str());
+            let model = chat_response.1.model.clone();
             let response = chat_response.1.choices[0].message.content.clone();
             let mut session = self
                 .sessions
@@ -285,6 +287,7 @@ impl AppBackend {
             let _ = update_user(&session).await;
 
             ChatResponse {
+                model,
                 cost,
                 response,
                 credit: session.credit,

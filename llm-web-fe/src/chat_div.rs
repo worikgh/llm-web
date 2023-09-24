@@ -66,7 +66,7 @@ impl Conversation {
             let prompt = text_for_html(prompt);
             let respone = i.1.response.as_str();
             let respone = text_for_html(respone);
-            result = format!("{result}<br/><span class='prompt'>{prompt}</span><br/><span class='response'>{respone}</span>",);
+            result = format!("{result}<br/><span class='prompt'>{} {prompt}</span><br/><span class='response'>{respone}</span>",i.1.model);
         }
         result
     }
