@@ -34,10 +34,13 @@ use web_sys::{
 };
 
 /// A conversation.  If `prompt` is not `None` a chat prompt has been
-/// sent and a reply is being waited for
+/// sent and a reply is being waited for.  Keeps a record of all
+/// responses received in `responses`.  
 #[derive(Debug, Deserialize, Serialize)]
 struct Conversation {
-    cost: f64,
+    // This, `cost`, does not need to be stored here.  It depends on the
+    // responses
+    // cost: f64,
     key: usize,
     prompt: Option<String>,
     responses: Vec<(String, ChatResponse)>,
@@ -46,9 +49,11 @@ struct Conversation {
 }
 
 impl Conversation {
+    /// The `key` is the index inth the HashMap that stores all the
+    /// conversations.
     fn new(key: usize) -> Self {
         Self {
-            cost: 0.0,
+            //cost: 0.0,
             key,
             prompt: None,
             responses: Vec::new(),
@@ -56,6 +61,9 @@ impl Conversation {
         }
     }
 
+    fn cost(&self) -> f64 {
+        self.responses.iter().fold(0.0, |a, b| a + b.1.cost)
+    }
     /// Get a display to put in response area.  Transform the text
     /// into HTML, and put class definitions in for prompts and
     /// responses so they can be styled
@@ -218,13 +226,12 @@ impl Chats {
         &mut self,
         response: ChatResponse,
         conversation_key: usize,
-        conversation_cost: f64,
     ) -> Result<(), JsValue> {
         // Preconditions:
         // 1. There is a current conversation
         // 2. The `prompt` is not None in current conversation
         let conversation = self.get_conversation_mut(&conversation_key).unwrap();
-        conversation.cost = conversation_cost;
+        // conversation.cost = conversation_cost;
         let prompt: String = conversation.prompt.as_ref().unwrap().clone();
         conversation.prompt = None;
         conversation.responses.push((prompt, response));
@@ -614,19 +621,6 @@ fn process_chat_response(
 
     // Get the cost
     let this_cost = chat_response.cost;
-    let conversation_cost = match chats.try_borrow() {
-        Err(err) => {
-            print_to_console_s(format!(
-                "Failed to borrow chats `process_chat_response`: {err:?}"
-            ));
-            panic![]
-            // f64::NAN
-        }
-        Ok(cas) => match cas.get_conversation(&conversation_key) {
-            Some(c) => c.responses.iter().fold(0.0, |a, b| a + b.1.cost) + this_cost,
-            None => 0.0,
-        },
-    };
 
     let document = window()
         .and_then(|win| win.document())
@@ -641,7 +635,7 @@ fn process_chat_response(
         }
         Ok(mut cas) => {
             cas.credit = credit;
-            cas.update_conversation(chat_response, conversation_key, conversation_cost)?;
+            cas.update_conversation(chat_response, conversation_key)?;
             if let Some(cc) = cas.current_conversation {
                 // There is a current conversation
                 if cc == conversation_key {
@@ -1242,7 +1236,7 @@ fn make_conversation_list(
                     }
                 }
                 let label = conversation.get_label();
-                let cost = conversation.cost;
+                let cost = conversation.cost();
                 conversation_displays.insert(
                     *key,
                     DisplayData {
