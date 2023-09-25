@@ -343,7 +343,7 @@ impl LlmWebPage for ChatDiv {
             .dyn_into::<HtmlButtonElement>()
             .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
         submit_button.set_inner_text("submit");
-        submit_button.set_id("chat-submit");
+        submit_button.set_id("chat_submit");
         let cc = chats.clone();
         let closure_onclick =
             Closure::wrap(Box::new(move || chat_submit_cb(cc.clone())) as Box<dyn Fn()>);
@@ -487,7 +487,7 @@ impl LlmWebPage for ChatDiv {
         add_css_rule(document, "#side-panel-div", "border", "1px solid black")?;
 
         // Pad the button to the left
-        add_css_rule(document, "#chat-submit", "margin-left", "1em")?;
+        add_css_rule(document, "#chat_submit", "margin-left", "1em")?;
 
         set_focus_on_element(document, "prompt_input");
 
@@ -588,7 +588,7 @@ fn process_chat_response(
     chats: Rc<RefCell<Chats>>,
     conversation_key: usize,
 ) -> Result<(), JsValue> {
-    print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
+    // print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
 
     // Check if conversation has been deleted while the LLM was working
     if !match chats.try_borrow() {
@@ -674,7 +674,7 @@ fn clear_response_screen() {
 /// Display the current conversation or clear the response screen if
 /// there is none:
 fn update_response_screen(conversation: &Conversation) {
-    print_to_console("update_response_screen 1");
+    //print_to_console("update_response_screen 1");
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
@@ -682,38 +682,18 @@ fn update_response_screen(conversation: &Conversation) {
     let response_div = document.get_element_by_id("response_div").unwrap();
     // Clear the children
     let response_childs = response_div.children();
-    print_to_console_s(format!(
-        "update_response: child count a: {}",
-        response_childs.length()
-    ));
     for i in 0..response_childs.length() {
         let child = response_childs.item(i).unwrap();
         response_div.remove_child(&child).unwrap();
     }
 
-    let response_childs = response_div.children();
-    print_to_console_s(format!(
-        "update_response: child count b: {}",
-        response_childs.length()
-    ));
-
     let contents = conversation.get_response_display().unwrap();
-    print_to_console_s(format!(
-        "update_response: contens count before: {}",
-        contents.children().length()
-    ));
 
     response_div.append_child(&contents).unwrap();
 
-    let response_childs = response_div.children();
-    print_to_console_s(format!(
-        "update_response: child count c: {}",
-        response_childs.length()
-    ));
-
     // Scroll to the bottom
     response_div.set_scroll_top(response_div.scroll_height());
-    print_to_console("update_response_screen 2");
+    // print_to_console("update_response_screen 2");
 }
 
 /// The callback for abort fetching a response
@@ -743,7 +723,7 @@ fn make_request_cb(
                 serde_json::from_str(message.object.as_str()).unwrap();
             process_chat_response(chat_response, conversations.clone(), current_conversation)
                 .unwrap();
-            remake_side_panel(conversations.clone()).unwrap();
+            remake_side_panel(conversations.clone());
         }
         CommType::InvalidRequest => {
             let inr: InvalidRequest =
@@ -836,7 +816,60 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
         Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
     };
 
-    remake_side_panel(chats.clone()).unwrap();
+    remake_side_panel(chats.clone());
+}
+
+/// Precondition: The current conversation is active.  Typically the
+/// #chat_submit button just been clicked.  When the current
+/// conversation is active the #prompt_input has the active prompt in
+/// it, the whole thing is greyed out and inactive.
+fn prompt_div_active_query(prompt: &str) -> Result<(), JsValue> {
+    // print_to_console_s(format!("prompt_div_active_query({prompt}) 1"));
+    let document = get_doc();
+    // Set the prompt in #prompt_input
+    let prompt_input = document
+        .get_element_by_id("prompt_input")
+        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
+    let prompt_input = prompt_input
+        .dyn_into::<HtmlInputElement>()
+        .map_err(|_err| JsValue::from_str("prompt_div_active_query: Failed to cast element"))?;
+    prompt_input.set_value(prompt);
+
+    let chat_submit = document
+        .get_element_by_id("chat_submit")
+        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
+    chat_submit.set_attribute("value", prompt)?;
+
+    // Disable the inputs
+    chat_submit.set_attribute("disabled", "")?;
+    prompt_input.set_attribute("disabled", "")?;
+    print_to_console("prompt_div_active_query 2");
+
+    Ok(())
+}
+
+/// When the current conversation is inactive but the #prompt_input is
+/// disabled it needs to be cleared and enabled.
+fn prompt_div_inactive_query() -> Result<(), JsValue> {
+    let document = get_doc();
+    let prompt_input = document
+        .get_element_by_id("prompt_input")
+        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
+    let disabled = prompt_input.get_attribute("disabled").is_some();
+    if disabled {
+        prompt_input.set_attribute("value", "")?;
+        prompt_input.remove_attribute("disabled")?;
+        let prompt_input = prompt_input
+            .dyn_into::<HtmlInputElement>()
+            .map_err(|_err| JsValue::from_str("prompt_div_active_query: Failed to cast element"))?;
+        prompt_input.set_value("");
+        let chat_submit = document
+            .get_element_by_id("chat_submit")
+            .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
+        chat_submit.set_attribute("value", "")?;
+        chat_submit.remove_attribute("disabled")?;
+    }
+    Ok(())
 }
 
 /// Callback for conversation select
@@ -871,9 +904,7 @@ fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
                 // Forced unwrap OK because `key` is current conversation
                 Ok(chats_ref) => {
                     let conv = chats_ref.conversations.get(&key).unwrap();
-                    print_to_console("select_conversation_cn Before display");
                     update_response_screen(conv);
-                    print_to_console("select_conversation_cn After display");
                 }
                 Err(err) => print_to_console_s(format!(
                     "select_conversation_cb: Failed to clone chats: {err:?}"
@@ -884,6 +915,7 @@ fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
     };
 
     //....
+    remake_side_panel(chats_clone.clone());
 }
 
 /// New conversation callback
@@ -903,10 +935,7 @@ fn new_conversation_callback(chats_clone: Rc<RefCell<Chats>>) {
         }
         Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
     }
-    match remake_side_panel(chats_clone.clone()) {
-        Ok(()) => (),
-        Err(err) => print_to_console_s(format!("Failed to remake side panel: {err:?}")),
-    };
+    remake_side_panel(chats_clone.clone());
 }
 
 /// Style experiment button
@@ -978,7 +1007,7 @@ fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
             panic![];
         }
     };
-    let _ = remake_side_panel(chats.clone());
+    remake_side_panel(chats.clone());
 }
 
 /// Callback for conversation delete button
@@ -1015,9 +1044,7 @@ fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
             };
             print_to_console("delete_conversation_cb 1.2");
 
-            if let Err(_err) = remake_side_panel(chats_clone.clone()) {
-                print_to_console("Delete conversation handler remake the side panel");
-            }
+            remake_side_panel(chats_clone.clone());
             print_to_console("delete_conversation_cb 2");
         }
     };
@@ -1083,7 +1110,13 @@ fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> 
 }
 
 /// Remake the side panel
-fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
+fn remake_side_panel(chats: Rc<RefCell<Chats>>) {
+    match _remake_side_panel(chats) {
+        Ok(_) => (),
+        Err(err) => print_to_console_s(format!("Failed to remake the side panel. Err: {err:?}")),
+    }
+}
+fn _remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
@@ -1166,7 +1199,7 @@ fn make_conversation_list(
     document: &Document,
     chats: Rc<RefCell<Chats>>,
 ) -> Result<Element, JsValue> {
-    // print_to_console("make_conversation_list 1");
+    print_to_console("make_conversation_list 1");
 
     let conversation_list_div = document.create_element("div")?;
 
@@ -1198,6 +1231,16 @@ fn make_conversation_list(
                     Some(c) => c == *key,
                     None => false,
                 };
+                if current {
+                    if active {
+                        print_to_console("make_conversation_list 1.5  current && active");
+                        // Deactivate the input, grey it out, while the request is active.
+                        // Remember to undo this when the response comes back.
+                        prompt_div_active_query(conversation.prompt.as_ref().unwrap())?;
+                    } else {
+                        prompt_div_inactive_query()?;
+                    }
+                }
                 let label = conversation.get_label();
                 let cost = conversation.cost;
                 conversation_displays.insert(
@@ -1298,7 +1341,7 @@ fn make_conversation_list(
             let chats_clone = chats.clone();
             let event_handler = Closure::wrap(Box::new(move |_event: Event| {
                 cancel_cb(&_event, chats_clone.clone());
-                remake_side_panel(chats_clone.clone()).unwrap();
+                remake_side_panel(chats_clone.clone());
             }) as Box<dyn FnMut(_)>);
 
             cancel_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
@@ -1368,4 +1411,10 @@ fn set_model(new_model: &str) {
     }
     // Get to here and there has been an error.
     print_to_console_s(format!("set_model({new_model}) failed"));
+}
+
+fn get_doc() -> Document {
+    window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document")
 }
