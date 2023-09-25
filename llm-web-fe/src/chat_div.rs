@@ -223,7 +223,7 @@ impl Chats {
         // Preconditions:
         // 1. There is a current conversation
         // 2. The `prompt` is not None in current conversation
-        let conversation = self.get_conversation_mut(conversation_key).unwrap();
+        let conversation = self.get_conversation_mut(&conversation_key).unwrap();
         conversation.cost = conversation_cost;
         let prompt: String = conversation.prompt.as_ref().unwrap().clone();
         conversation.prompt = None;
@@ -250,12 +250,12 @@ impl Chats {
     }
 
     /// Get a conversation to mutate
-    fn get_conversation_mut(&mut self, current_conversation: usize) -> Option<&mut Conversation> {
+    fn get_conversation_mut(&mut self, current_conversation: &usize) -> Option<&mut Conversation> {
         self.conversations.get_mut(&current_conversation)
     }
 
     /// Get a conversation to read
-    fn get_conversation(&self, current_conversation: usize) -> Option<&Conversation> {
+    fn get_conversation(&self, current_conversation: &usize) -> Option<&Conversation> {
         self.conversations.get(&current_conversation)
     }
 
@@ -622,7 +622,7 @@ fn process_chat_response(
             panic![]
             // f64::NAN
         }
-        Ok(cas) => match cas.get_conversation(conversation_key) {
+        Ok(cas) => match cas.get_conversation(&conversation_key) {
             Some(c) => c.responses.iter().fold(0.0, |a, b| a + b.1.cost) + this_cost,
             None => 0.0,
         },
@@ -647,7 +647,7 @@ fn process_chat_response(
                 if cc == conversation_key {
                     // This data returned is for the current
                     // conversation So update display
-                    if let Some(c) = cas.get_conversation(conversation_key) {
+                    if let Some(c) = cas.get_conversation(&conversation_key) {
                         // TODO: Is this unwrap OK?
                         update_response_screen(c);
                     } else {
@@ -930,15 +930,37 @@ fn style_experiment_cb() {
 }
 
 /// Calcel button callback
-fn cancel_cb(chats_clone: Rc<RefCell<Chats>>) {
-    match chats_clone.try_borrow_mut() {
+fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
+    print_to_console("cancel_cb 1");
+    let target = event.target().unwrap();
+    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+
+    // Get the ID off the clicked radio button
+    let id = target_element.id();
+    print_to_console_s(format!("cancel_cb 1.3 id: {id}"));
+    let id = id.as_str();
+    print_to_console_s(format!("cancel_cb 1.4 id: {id}"));
+    let id = &id["cancel_request_".len()..];
+    print_to_console_s(format!("cancel_cb 1.5 id: {id}"));
+    let id = match id.parse::<usize>() {
+        Ok(id) => id,
+        Err(_err) => {
+            print_to_console_s(format!("cancel_cb cannot parse id from event: {event:?}"));
+            return;
+        }
+    };
+
+    match chats.try_borrow_mut() {
         Ok(mut m_chats) => {
-            match m_chats.get_current_conversation() {
+            match m_chats.get_conversation(&id) {
                 Some(cc) => match &cc.request {
                     Some(xhr) => {
+                        print_to_console_s(format!("cancel_cb 1.6 id: {id}"));
                         xhr.abort().unwrap();
-                        if let Some(cc) = m_chats.get_current_conversation_mut() {
+                        print_to_console_s(format!("cancel_cb 1.7 id: {id}"));
+                        if let Some(cc) = m_chats.get_conversation_mut(&id) {
                             cc.prompt = None;
+                            print_to_console_s(format!("cancel_cb 1.7 id: {id}"));
                             cc.request = None;
                         } else {
                             print_to_console("Cannot get current conversation for abort");
@@ -956,10 +978,12 @@ fn cancel_cb(chats_clone: Rc<RefCell<Chats>>) {
             panic![];
         }
     };
+    let _ = remake_side_panel(chats.clone());
 }
 
 /// Callback for conversation delete button
 fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
+    print_to_console("delete_conversation_cb 1");
     let target = event.target().unwrap();
     let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
 
@@ -972,6 +996,7 @@ fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
             "Cannot parse {id} setting up delete conversation button: Error: {err}"
         )),
         Ok(key) => {
+            print_to_console("delete_conversation_cb 1.1  Got key");
             // `key` is the conversation to delete
             match chats_clone.try_borrow_mut() {
                 Err(_err) => {
@@ -988,10 +1013,12 @@ fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
                     chats_mut.delete_conversation(key);
                 }
             };
+            print_to_console("delete_conversation_cb 1.2");
 
             if let Err(_err) = remake_side_panel(chats_clone.clone()) {
                 print_to_console("Delete conversation handler remake the side panel");
             }
+            print_to_console("delete_conversation_cb 2");
         }
     };
 }
@@ -1270,7 +1297,7 @@ fn make_conversation_list(
 
             let chats_clone = chats.clone();
             let event_handler = Closure::wrap(Box::new(move |_event: Event| {
-                cancel_cb(chats_clone.clone());
+                cancel_cb(&_event, chats_clone.clone());
                 remake_side_panel(chats_clone.clone()).unwrap();
             }) as Box<dyn FnMut(_)>);
 

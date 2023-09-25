@@ -12,5 +12,4 @@
 
 * FAILED Borrows!!  Making a new converstaion triggers it.  Added panics on each failure 
 * `update_response_screen` Needs error checking
-* Cannot cancel conversation response that are not current
 
