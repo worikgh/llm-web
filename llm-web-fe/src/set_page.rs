@@ -40,7 +40,8 @@ pub fn set_page(page: Pages) -> Result<(), JsValue> {
 }
 
 #[allow(dead_code)]
-pub fn set_status(document: &Document, status: &str) {
+pub fn set_status(status: &str) {
+    let document: &Document = &get_doc();
     let status = &text_for_html(status);
     if let Some(status_element) = document.get_element_by_id("status_div") {
         status_element.set_inner_html(status);
@@ -181,4 +182,10 @@ pub fn new_button(
     result.set_inner_text(display);
 
     Ok(result)
+}
+
+pub fn get_doc() -> Document {
+    window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document")
 }

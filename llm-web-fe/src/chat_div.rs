@@ -5,6 +5,7 @@ use crate::manipulate_css::add_css_rule;
 use crate::manipulate_css::clear_css;
 use crate::manipulate_css::get_css_rules;
 use crate::manipulate_css::set_css_rules;
+use crate::set_page::get_doc;
 use crate::set_page::new_button;
 use crate::set_page::set_focus_on_element;
 use crate::set_page::set_status;
@@ -692,10 +693,7 @@ fn update_response_screen(conversation: &Conversation) {
 
 /// The callback for abort fetching a response
 fn abort_request_cb() {
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    set_status(&document, "Abort request");
+    set_status("Abort request");
 }
 
 /// The callback for `make_request`
@@ -704,13 +702,7 @@ fn make_request_cb(
     conversations: Rc<RefCell<Chats>>,
     current_conversation: usize,
 ) {
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    set_status(
-        &document,
-        format!("make_request_cb 1 {}", message.comm_type).as_str(),
-    );
+    set_status(format!("make_request_cb 1 {}", message.comm_type).as_str());
     match message.comm_type {
         CommType::ChatResponse => {
             let chat_response: ChatResponse =
@@ -722,12 +714,8 @@ fn make_request_cb(
         CommType::InvalidRequest => {
             let inr: InvalidRequest =
                 serde_json::from_str(message.object.as_str()).expect("Not an InvalidRequest");
-            let document = window()
-                .and_then(|win| win.document())
-                .expect("Failed to get document");
-
-            let result_div = document.get_element_by_id("response_div").unwrap();
-            result_div.set_inner_html(&inr.reason);
+            set_status(&inr.reason);
+            // set_page(Pages::LoginDiv).unwrap();
         }
         _ => (),
     };
@@ -748,7 +736,7 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
         .unwrap();
     let prompt = prompt_input.value();
     prompt_input.set_value("");
-    set_status(&document, format!("Sending prompt: {prompt}").as_str());
+    set_status(format!("Sending prompt: {prompt}").as_str());
 
     // The history or the chat so far, plus latest prompt
     let messages: Vec<LLMMessage> = build_messages(chats.clone(), prompt.clone());
@@ -1405,10 +1393,4 @@ fn set_model(new_model: &str) {
     }
     // Get to here and there has been an error.
     print_to_console_s(format!("set_model({new_model}) failed"));
-}
-
-fn get_doc() -> Document {
-    window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document")
 }
