@@ -15,6 +15,7 @@ use llm_web_common::communication::LoginResponse;
 use llm_web_common::communication::Message;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
+use web_sys::XmlHttpRequest;
 use web_sys::{window, Document, Element, HtmlInputElement};
 pub struct LoginDiv;
 impl LlmWebPage for LoginDiv {
@@ -83,17 +84,17 @@ impl LlmWebPage for LoginDiv {
             } else {
                 "".to_string()
             };
-
-            let login_request = LoginRequest { username, password };
-            let login_message = Message::from(login_request);
-            match make_request(login_message, login_cb, || ()) {
-                Ok(_) => (),
-                Err(err) => panic!("{:?}", err,),
-            };
+            _ = do_login(username, password).unwrap();
         });
         on_click.forget();
         Ok(login_main_div)
     }
+}
+
+pub fn do_login(username: String, password: String) -> Result<XmlHttpRequest, JsValue> {
+    let login_request = LoginRequest { username, password };
+    let login_message = Message::from(login_request);
+    make_request(login_message, login_cb, || ())
 }
 
 fn login_cb(msg: Message) {
