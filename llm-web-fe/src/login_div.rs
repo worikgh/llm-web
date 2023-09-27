@@ -1,6 +1,7 @@
 use crate::llm_webpage::LlmWebPage;
 use crate::make_request::make_request;
 use crate::manipulate_css::add_css_rule;
+use crate::set_page::get_doc;
 use crate::set_page::set_page;
 use crate::set_page::set_status;
 use crate::set_page::update_cost_display;
@@ -29,16 +30,12 @@ impl LlmWebPage for LoginDiv {
         login_fields_div.set_id("login-fields-div");
 
         // Username and pasword elements
-        let username_input = document.create_element("input")?;
-        let password_input = document.create_element("input")?;
-        username_input.set_id("username_input");
-        password_input.set_id("password_input");
-        username_input.set_attribute("type", "text")?;
-        password_input.set_attribute("type", "password")?;
+        let (username_input, password_input) = username_password_elements()?;
 
         // Hack so logging in quicker
         username_input.set_attribute("value", "a")?;
         password_input.set_attribute("value", "b")?;
+
         // Login button
         let user_text_submit = document.create_element("button")?;
         user_text_submit.set_id("user_text_submit");
@@ -74,8 +71,6 @@ impl LlmWebPage for LoginDiv {
         add_css_rule(document, "#login-fields-div", "padding", "10px".to_string())?;
 
         let on_click = EventListener::new(&user_text_submit, "click", move |_event| {
-            // Call whatever function you would like with the value of the
-            // text input.
             let username: String = if let Some(input) = username_input.dyn_ref::<HtmlInputElement>()
             {
                 input.value()
@@ -91,31 +86,7 @@ impl LlmWebPage for LoginDiv {
 
             let login_request = LoginRequest { username, password };
             let login_message = Message::from(login_request);
-            let cb = |msg: Message| {
-                match msg.comm_type {
-                    CommType::LoginResponse => {
-                        let lr: LoginResponse = serde_json::from_str(msg.object.as_str()).unwrap();
-                        let document = window()
-                            .and_then(|win| win.document())
-                            .expect("Failed to get document");
-                        if lr.success {
-                            // Store token
-                            let token = lr.token.unwrap();
-                            set_status(&document, format!("Setting token: {token}").as_str());
-
-                            let head = document.body().unwrap();
-                            head.set_attribute("data.token", token.as_str()).unwrap();
-                            set_page(Pages::ChatDiv).unwrap();
-                            update_cost_display(&document, lr.credit, 0.0);
-                        } else {
-                            set_status(&document, "Login failed");
-                            set_page(Pages::LoginDiv).unwrap();
-                        }
-                    }
-                    _ => panic!("Expected LoginResponse got {}", msg),
-                };
-            };
-            match make_request(login_message, cb, || ()) {
+            match make_request(login_message, login_cb, || ()) {
                 Ok(_) => (),
                 Err(err) => panic!("{:?}", err,),
             };
@@ -123,4 +94,48 @@ impl LlmWebPage for LoginDiv {
         on_click.forget();
         Ok(login_main_div)
     }
+}
+
+fn login_cb(msg: Message) {
+    {
+        match msg.comm_type {
+            CommType::LoginResponse => {
+                let lr: LoginResponse = serde_json::from_str(msg.object.as_str()).unwrap();
+                let document = window()
+                    .and_then(|win| win.document())
+                    .expect("Failed to get document");
+                if lr.success {
+                    // Store token
+                    let token = lr.token.unwrap();
+                    set_status(format!("Setting token: {token}").as_str());
+
+                    let head = document.body().unwrap();
+                    head.set_attribute("data.token", token.as_str()).unwrap();
+                    set_page(Pages::ChatDiv).unwrap();
+                    update_cost_display(&document, lr.credit, 0.0);
+                } else {
+                    set_status("Login failed");
+                    set_page(Pages::LoginDiv).unwrap();
+                }
+            }
+            _ => panic!("Expected LoginResponse got {}", msg),
+        };
+    };
+}
+
+pub fn username_password_elements() -> Result<(HtmlInputElement, HtmlInputElement), JsValue> {
+    let document = get_doc();
+    let username_input = document
+        .create_element("input")?
+        .dyn_into::<HtmlInputElement>()?;
+    let password_input = document
+        .create_element("input")?
+        .dyn_into::<HtmlInputElement>()?;
+    username_input.set_id("username_input");
+    password_input.set_id("password_input");
+    username_input.set_attribute("type", "text")?;
+    password_input.set_attribute("type", "password")?;
+    username_input.set_attribute("autocomplete", "username")?;
+    password_input.set_attribute("autocomplete", "current-password")?;
+    Ok((username_input, password_input))
 }
