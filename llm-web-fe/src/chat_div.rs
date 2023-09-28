@@ -1,5 +1,7 @@
 use crate::filters::text_for_html;
 use crate::llm_webpage::LlmWebPage;
+use crate::login_div::do_login;
+use crate::login_div::username_password_elements;
 use crate::make_request::make_request;
 use crate::manipulate_css::add_css_rule;
 use crate::manipulate_css::clear_css;
@@ -1173,6 +1175,23 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     let conversation_list = make_conversation_list(document, chats.clone())?;
     side_panel_div.append_child(&conversation_list)?;
 
+    // Login area.  Hiddent to start with
+    let login_div = document.create_element("DIV")?;
+    let (username_input, password_input) = username_password_elements()?;
+    let user_text_submit = document.create_element("button")?;
+    user_text_submit.set_id("user_text_submit");
+    user_text_submit.set_inner_html("Login");
+
+    login_div.append_child(&username_input)?;
+    login_div.append_child(&password_input)?;
+    login_div.append_child(&user_text_submit)?;
+    let on_click = EventListener::new(&user_text_submit, "click", move |_event| {
+        let username: String = username_input.value();
+        let password: String = password_input.value();
+        _ = do_login(username, password).unwrap();
+    });
+    on_click.forget();
+    side_panel_div.append_child(&login_div)?;
     Ok(side_panel_div)
 }
 
