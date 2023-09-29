@@ -46,6 +46,8 @@ struct Conversation {
     // cost: f64,
     key: usize,
     prompt: Option<String>,
+    // responses are stored in chronological order.  This matters when
+    // displaying, pruning, and forking a chat
     responses: Vec<(String, ChatResponse)>,
     #[serde(skip_serializing, skip_deserializing)]
     request: Option<XmlHttpRequest>,
@@ -70,24 +72,41 @@ impl Conversation {
     /// Get a display to put in response area.  Transform the text
     /// into HTML, and put class definitions in for prompts and
     /// responses so they can be styled
-    fn get_response_display(&self) -> Result<Element, JsValue> {
+    fn get_response_display(&self, chats: Rc<RefCell<Chats>>) -> Result<Element, JsValue> {
         let document = window()
             .and_then(|win| win.document())
             .expect("Failed to get document");
         let result = document.create_element("UL")?;
         result.set_id("responses_ul");
-        for i in self.responses.iter() {
+
+        for (c, i) in self.responses.iter().enumerate() {
             let li = document.create_element("LI")?;
 
             let prompt = i.0.as_str();
             let prompt = text_for_html(prompt);
             let respone = i.1.response.as_str();
             let response = text_for_html(respone);
-            let meta = i.1.model.as_str();
-
+            let model = i.1.model.as_str();
+            let model_span = document.create_element("SPAN")?;
+            model_span.set_inner_html(model);
             let meta_div = document.create_element("DIV")?;
             meta_div.set_attribute("class", "meta_div")?;
-            meta_div.set_inner_html(meta);
+            meta_div.append_child(&model_span)?;
+
+            let prune_button = document
+                .create_element("button")?
+                .dyn_into::<HtmlButtonElement>()?;
+            let key = self.key;
+            let chats_c = chats.clone();
+            let closure_prune_onclick =
+                Closure::wrap(
+                    Box::new(move || prune_submit_cb(key, c, chats_c.clone())) as Box<dyn Fn()>
+                );
+            prune_button.set_onclick(Some(closure_prune_onclick.as_ref().unchecked_ref()));
+            prune_button.set_inner_text("Prune");
+            prune_button.set_class_name("prune_button");
+            closure_prune_onclick.forget();
+            meta_div.append_child(&prune_button)?;
 
             let display_prompt_div = document.create_element("DIV")?;
             display_prompt_div.set_attribute("class", "prompt")?;
@@ -261,12 +280,12 @@ impl Chats {
 
     /// Get a conversation to mutate
     fn get_conversation_mut(&mut self, current_conversation: &usize) -> Option<&mut Conversation> {
-        self.conversations.get_mut(&current_conversation)
+        self.conversations.get_mut(current_conversation)
     }
 
     /// Get a conversation to read
     fn get_conversation(&self, current_conversation: &usize) -> Option<&Conversation> {
-        self.conversations.get(&current_conversation)
+        self.conversations.get(current_conversation)
     }
 
     /// Check that a conversation exists
@@ -645,8 +664,7 @@ fn process_chat_response(
                     // This data returned is for the current
                     // conversation So update display
                     if let Some(c) = cas.get_conversation(&conversation_key) {
-                        // TODO: Is this unwrap OK?
-                        update_response_screen(c);
+                        update_response_screen(c, chats.clone());
                     } else {
                         panic!("Cannot get coversation");
                     };
@@ -670,7 +688,7 @@ fn clear_response_screen() {
 
 /// Display the current conversation or clear the response screen if
 /// there is none:
-fn update_response_screen(conversation: &Conversation) {
+fn update_response_screen(conversation: &Conversation, chats: Rc<RefCell<Chats>>) {
     //print_to_console("update_response_screen 1");
     let document = window()
         .and_then(|win| win.document())
@@ -684,7 +702,7 @@ fn update_response_screen(conversation: &Conversation) {
         response_div.remove_child(&child).unwrap();
     }
 
-    let contents = conversation.get_response_display().unwrap();
+    let contents = conversation.get_response_display(chats.clone()).unwrap();
 
     response_div.append_child(&contents).unwrap();
 
@@ -696,6 +714,10 @@ fn update_response_screen(conversation: &Conversation) {
 /// The callback for abort fetching a response
 fn abort_request_cb() {
     set_status("Abort request");
+}
+
+fn prune_submit_cb(chat: usize, index: usize, _chats: Rc<RefCell<Chats>>) {
+    print_to_console_s(format!("prune {chat}/{index}"));
 }
 
 /// The callback for `make_request`
@@ -857,7 +879,7 @@ fn prompt_div_inactive_query() -> Result<(), JsValue> {
 }
 
 /// Callback for conversation select
-fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
+fn select_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
     let target = event.target().unwrap();
     let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
 
@@ -870,7 +892,7 @@ fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
     match id.parse() {
         Ok(key) => {
             // `key` is the selected conversation
-            match chats_clone.try_borrow_mut() {
+            match chats.try_borrow_mut() {
                 Ok(mut chats) => match chats.set_current_conversation(key) {
                     Ok(()) => (),
                     Err(_err) => {
@@ -884,11 +906,11 @@ fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
                 }
             };
             // Redraw the response screen
-            match chats_clone.try_borrow() {
+            match chats.try_borrow() {
                 // Forced unwrap OK because `key` is current conversation
                 Ok(chats_ref) => {
                     let conv = chats_ref.conversations.get(&key).unwrap();
-                    update_response_screen(conv);
+                    update_response_screen(conv, chats.clone());
                 }
                 Err(err) => print_to_console_s(format!(
                     "select_conversation_cb: Failed to clone chats: {err:?}"
@@ -899,18 +921,21 @@ fn select_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
     };
 
     //....
-    remake_side_panel(chats_clone.clone());
+    remake_side_panel(chats.clone());
 }
 
 /// New conversation callback
-fn new_conversation_callback(chats_clone: Rc<RefCell<Chats>>) {
-    match make_new_conversation(chats_clone.clone()) {
+fn new_conversation_callback(chats: Rc<RefCell<Chats>>) {
+    match make_new_conversation(chats.clone()) {
         Ok(key) => {
-            set_current_conversation(chats_clone.clone(), key);
+            set_current_conversation(chats.clone(), key);
             // Make the new conversation the current.  FIXME:  This is convoluted
-            match chats_clone.try_borrow() {
+            match chats.try_borrow() {
                 Ok(chats_ref) => {
-                    update_response_screen(chats_ref.conversations.get(&key).unwrap());
+                    update_response_screen(
+                        chats_ref.conversations.get(&key).unwrap(),
+                        chats.clone(),
+                    );
                 }
                 Err(err) => print_to_console_s(format!(
                     "new_conversation_callback: Failed to clone chats: {err:?}"
@@ -919,7 +944,7 @@ fn new_conversation_callback(chats_clone: Rc<RefCell<Chats>>) {
         }
         Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
     }
-    remake_side_panel(chats_clone.clone());
+    remake_side_panel(chats.clone());
 }
 
 /// Style experiment button
@@ -995,7 +1020,7 @@ fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
 }
 
 /// Callback for conversation delete button
-fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
+fn delete_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
     print_to_console("delete_conversation_cb 1");
     let target = event.target().unwrap();
     let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
@@ -1011,7 +1036,7 @@ fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
         Ok(key) => {
             print_to_console("delete_conversation_cb 1.1  Got key");
             // `key` is the conversation to delete
-            match chats_clone.try_borrow_mut() {
+            match chats.try_borrow_mut() {
                 Err(_err) => {
                     print_to_console("Delete conversation handler faied to borrow mut chats");
                     panic![];
@@ -1028,7 +1053,7 @@ fn delete_conversation_cb(event: Event, chats_clone: Rc<RefCell<Chats>>) {
             };
             print_to_console("delete_conversation_cb 1.2");
 
-            remake_side_panel(chats_clone.clone());
+            remake_side_panel(chats.clone());
             print_to_console("delete_conversation_cb 2");
         }
     };
