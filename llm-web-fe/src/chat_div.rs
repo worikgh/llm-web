@@ -569,6 +569,9 @@ impl LlmWebPage for ChatDiv {
         add_css_rule(document, ".meta_div", "font-size", "small")?;
         add_css_rule(document, ".meta_div", "padding", "1em")?;
         add_css_rule(document, ".meta_div", "margin", "1em")?;
+        add_css_rule(document, ".meta_div", "display", "flex")?;
+        add_css_rule(document, ".meta_div", "flex-direction", "column")?;
+        add_css_rule(document, ".prune_button", "align-self", "flex-start")?;
         add_css_rule(document, ".pr_div", "width", "80%")?;
         add_css_rule(document, ".pr_div", "margin-right", "1em")?;
 
