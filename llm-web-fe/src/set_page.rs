@@ -31,7 +31,7 @@ pub fn set_page(page: Pages) -> Result<(), JsValue> {
         main_body.set_inner_html("");
         main_body.append_child(&e)?;
         body.append_child(&main_body)?;
-        set_focus_on_element(&document, "prompt-input");
+        set_focus_on_element("prompt-input");
     } else {
         print_to_console("No `main_body` in page.  Has not been initialised");
         panic!("Died");
@@ -51,7 +51,8 @@ pub fn set_status(status: &str) {
 }
 
 #[allow(dead_code)]
-pub fn set_focus_on_element(document: &Document, element_id: &str) {
+pub fn set_focus_on_element(element_id: &str) {
+    let document: &Document = &get_doc();
     // print_to_console("set_focus_on_element 1");
     if let Some(element) = document.get_element_by_id(element_id) {
         if let Some(input) = element.dyn_ref::<HtmlElement>() {

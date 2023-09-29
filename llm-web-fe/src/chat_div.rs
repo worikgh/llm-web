@@ -518,7 +518,7 @@ impl LlmWebPage for ChatDiv {
         // Pad the button to the left
         add_css_rule(document, "#chat_submit", "margin-left", "1em")?;
 
-        set_focus_on_element(document, "prompt_input");
+        set_focus_on_element("prompt_input");
 
         // cancel_button.set_id(format!("cancel_request_{key}").as_str());
         // cancel_button.set_attribute("class", "prompt_cancel_button")?;
@@ -756,7 +756,10 @@ fn make_request_cb(
             let inr: InvalidRequest =
                 serde_json::from_str(message.object.as_str()).expect("Not an InvalidRequest");
             set_status(&inr.reason);
-            // set_page(Pages::LoginDiv).unwrap();
+            // Enable the prompt div as there will be no valid return
+            enable_prompt_div().unwrap();
+            // Need to login again
+            set_focus_on_element("username_input");
         }
         _ => (),
     };
@@ -842,6 +845,42 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
     remake_side_panel(chats.clone());
 }
 
+/// Disables the HTML elements used to enter a prompt
+fn disable_prompt_div() -> Result<(), JsValue> {
+    let document = get_doc();
+
+    let prompt_input = document
+        .get_element_by_id("prompt_input")
+        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
+
+    let chat_submit = document
+        .get_element_by_id("chat_submit")
+        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
+
+    // Disable the inputs
+    chat_submit.set_attribute("disabled", "")?;
+    prompt_input.set_attribute("disabled", "")?;
+    Ok(())
+}
+
+/// Enables the HTML elements used to enter a prompt
+fn enable_prompt_div() -> Result<(), JsValue> {
+    let document = get_doc();
+
+    let prompt_input = document
+        .get_element_by_id("prompt_input")
+        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
+
+    let chat_submit = document
+        .get_element_by_id("chat_submit")
+        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
+
+    // Disable the inputs
+    chat_submit.remove_attribute("disabled")?;
+    prompt_input.remove_attribute("disabled")?;
+    Ok(())
+}
+
 /// Precondition: The current conversation is active.  Typically the
 /// #chat_submit button just been clicked.  When the current
 /// conversation is active the #prompt_input has the active prompt in
@@ -852,21 +891,13 @@ fn prompt_div_active_query(prompt: &str) -> Result<(), JsValue> {
     // Set the prompt in #prompt_input
     let prompt_input = document
         .get_element_by_id("prompt_input")
-        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
-    let prompt_input = prompt_input
+        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?
         .dyn_into::<HtmlInputElement>()
         .map_err(|_err| JsValue::from_str("prompt_div_active_query: Failed to cast element"))?;
     prompt_input.set_value(prompt);
 
-    let chat_submit = document
-        .get_element_by_id("chat_submit")
-        .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
-    chat_submit.set_attribute("value", prompt)?;
-
     // Disable the inputs
-    chat_submit.set_attribute("disabled", "")?;
-    prompt_input.set_attribute("disabled", "")?;
-    print_to_console("prompt_div_active_query 2");
+    disable_prompt_div()?;
 
     Ok(())
 }
@@ -881,7 +912,6 @@ fn prompt_div_inactive_query() -> Result<(), JsValue> {
     let disabled = prompt_input.get_attribute("disabled").is_some();
     if disabled {
         prompt_input.set_attribute("value", "")?;
-        prompt_input.remove_attribute("disabled")?;
         let prompt_input = prompt_input
             .dyn_into::<HtmlInputElement>()
             .map_err(|_err| JsValue::from_str("prompt_div_active_query: Failed to cast element"))?;
@@ -890,7 +920,7 @@ fn prompt_div_inactive_query() -> Result<(), JsValue> {
             .get_element_by_id("chat_submit")
             .ok_or_else(|| JsValue::from_str("Cannot get prompt"))?;
         chat_submit.set_attribute("value", "")?;
-        chat_submit.remove_attribute("disabled")?;
+        enable_prompt_div()?;
     }
     Ok(())
 }
