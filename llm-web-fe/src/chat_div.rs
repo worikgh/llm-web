@@ -82,7 +82,7 @@ impl Conversation {
 
         for (c, i) in self.responses.iter().enumerate() {
             let li = document.create_element("LI")?;
-
+            li.set_class_name("response_li");
             let prompt = i.0.as_str();
             let prompt = text_for_html(prompt);
             let respone = i.1.response.as_str();
@@ -108,6 +108,11 @@ impl Conversation {
             prune_button.set_class_name("prune_button");
             closure_prune_onclick.forget();
             meta_div.append_child(&prune_button)?;
+
+            let cost = document.create_element("span")?;
+            cost.set_inner_html(format!("Cost: {:0.4}\u{00A2}", i.1.cost).as_str());
+            cost.set_class_name("meta_cost_span");
+            meta_div.append_child(&cost)?;
 
             let display_prompt_div = document.create_element("DIV")?;
             display_prompt_div.set_attribute("class", "prompt")?;
@@ -572,6 +577,9 @@ impl LlmWebPage for ChatDiv {
         add_css_rule(document, ".meta_div", "margin", "1em")?;
         add_css_rule(document, ".meta_div", "display", "flex")?;
         add_css_rule(document, ".meta_div", "flex-direction", "column")?;
+        add_css_rule(document, ".meta_div", "justify-content", "end")?;
+        //
+        add_css_rule(document, ".response_li", "align-items", "stretch")?;
         add_css_rule(document, ".prune_button", "align-self", "flex-start")?;
         add_css_rule(document, ".pr_div", "width", "80%")?;
         add_css_rule(document, ".pr_div", "margin-right", "1em")?;
