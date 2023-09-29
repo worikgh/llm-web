@@ -1,3 +1,4 @@
+use crate::filters;
 use crate::filters::text_for_html;
 use crate::llm_webpage::LlmWebPage;
 use crate::login_div::do_login;
@@ -1394,7 +1395,7 @@ fn make_conversation_list(
         // a method for the user to name conversations?
         let conversation_name = document.create_element("span")?;
         conversation_name.set_attribute("class", "conversation_name")?;
-        conversation_name.set_inner_html(dd.label.as_str());
+        conversation_name.set_inner_html(&filters::text_for_html(dd.label.as_str()));
         li.append_child(&conversation_name)?;
 
         // If this is active create a button to cancel it
