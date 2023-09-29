@@ -716,8 +716,22 @@ fn abort_request_cb() {
     set_status("Abort request");
 }
 
-fn prune_submit_cb(chat: usize, index: usize, _chats: Rc<RefCell<Chats>>) {
-    print_to_console_s(format!("prune {chat}/{index}"));
+/// Prune a conversation.  Remove all conversations based on `chat`
+/// that says what chat to remove it from, and `index` that says which
+/// is the first to remove.  Remove it and all following it
+fn prune_submit_cb(chat: usize, index: usize, chats: Rc<RefCell<Chats>>) {
+    match chats.try_borrow_mut() {
+        Err(_err) => {
+            print_to_console("Faile to borrow chats in prune submit callback");
+            panic![];
+        }
+        Ok(mut chats_mut) => {
+            // Forced unwrapp OK because the chat passed in has been selected
+            let conversation = chats_mut.conversations.get_mut(&chat).unwrap();
+            conversation.responses = conversation.responses.iter().take(index).cloned().collect();
+            update_response_screen(chats_mut.conversations.get(&chat).unwrap(), chats.clone());
+        }
+    };
 }
 
 /// The callback for `make_request`

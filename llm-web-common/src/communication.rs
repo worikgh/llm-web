@@ -95,7 +95,7 @@ pub struct ChatPrompt {
     pub token: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 /// From llm-web-be -> llm-web-fe.  Response from LLM
 /// Has to send back all the information the front end needs
 pub struct ChatResponse {
