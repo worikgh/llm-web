@@ -37,6 +37,277 @@ use web_sys::{
     HtmlOptionElement, HtmlSelectElement,
 };
 
+/// Hold the code for creating and manipulating the chat_div
+#[derive(Debug, Deserialize)]
+pub struct ChatDiv;
+
+impl LlmWebPage for ChatDiv {
+    /// Screen for the `chat` model interface
+    fn initialise_page(document: &Document) -> Result<Element, JsValue> {
+        // Manage state of the conversations with the LLM
+        let chats = Rc::new(RefCell::new(Chats::new()?));
+
+        // The container DIV that arranges the page
+        let chat_div = document
+            .create_element("div")
+            .expect("Could not create DIV element");
+
+        chat_div.set_id("chat_div");
+        chat_div.set_class_name("grid-container");
+
+        // The conversation with the LLM
+        let conversation_div = document
+            .create_element("div")
+            .expect("Could not create DIV element");
+        conversation_div.set_id("response_div");
+
+        // The entry for the prompt
+        let prompt_div = document
+            .create_element("div")
+            .expect("Could not create DIV element");
+        prompt_div.set_id("prompt_div");
+        let prompt_inp: HtmlInputElement = document
+            .create_element("input")
+            .map_err(|err| format!("Error creating input element: {:?}", err))?
+            .dyn_into::<HtmlInputElement>()
+            .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))?;
+        prompt_inp.set_value("");
+        prompt_inp.set_type("text");
+        prompt_inp.set_attribute("spellcheck", "true")?;
+        prompt_inp.set_id("prompt_input");
+        let cc = chats.clone();
+
+        // Detect when an <enter> key pressed and submit prompt
+        let prompt_input_enter = EventListener::new(&prompt_inp, "keyup", move |event| {
+            let c = cc.clone();
+            let event: KeyboardEvent = event.clone().unchecked_into();
+            let key_code = event.key_code();
+            if key_code == 13 {
+                // <enter> keycode
+                chat_submit_cb(c);
+            }
+        });
+        prompt_input_enter.forget();
+
+        prompt_div.append_child(&prompt_inp)?;
+
+        // The submit button
+        let submit_button: HtmlButtonElement = document
+            .create_element("button")
+            .map_err(|err| format!("Error creating button element: {:?}", err))?
+            .dyn_into::<HtmlButtonElement>()
+            .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
+        submit_button.set_inner_text("submit");
+        submit_button.set_id("chat_submit");
+        let cc = chats.clone();
+        let closure_onclick =
+            Closure::wrap(Box::new(move || chat_submit_cb(cc.clone())) as Box<dyn Fn()>);
+        submit_button.set_onclick(Some(closure_onclick.as_ref().unchecked_ref()));
+        closure_onclick.forget();
+
+        prompt_div.append_child(&submit_button)?;
+
+        let side_panel_div = make_side_panel(document, chats.clone())?;
+
+        // Put the page together
+        chat_div.append_child(&conversation_div).unwrap();
+        chat_div.append_child(&prompt_div).unwrap();
+        chat_div.append_child(&side_panel_div).unwrap();
+
+        // Prepare variables to control page layout
+
+        // Column and row count
+        let col = 160;
+        let row = 100;
+
+        // Arrange Page:
+
+        // * Side Panel takes left part of screen from under the menu
+        // bar to the top of status
+
+        // * The right portion is divided in two, vertically:
+
+        //  At the bottom a prompt entry area and submit button
+
+        //  At the top and taking up most of the remaining space is the
+        //  display of results.
+
+        // Side panel starts at top (1) left (1) and its height is the
+        // screen heigh. The side panel width (span) is to 4/16 of screen
+        // width
+        let side_panel_w = col * 4 / 16;
+        let side_panel_l = 1;
+        let side_panel_t = 1;
+        let side_panel_h = row;
+
+        // The response, prompt, and button panels all have the same left
+        // margin and width
+        let main_l = side_panel_l + side_panel_w;
+        let main_w = col - side_panel_w;
+
+        // Prompt div height is 10% of total
+        let prompt_h = (row * 10) / 100;
+        let prompt_t = row - (row * 10) / 100 + 1;
+        let prompt_l = main_l;
+        let prompt_w = main_w;
+
+        // Response top is below cost, to the right of the side panel,
+        // takes all the space left vertically and extends to the right of
+        // the screen
+        let response_t = 1;
+        let response_l = main_l;
+        let response_h = row - prompt_h;
+        let response_w = main_w;
+
+        // // Inject the style into the DOM.
+        // clear_css(document)?;
+
+        add_css_rule(document, ".prompt", "font-size", "small")?;
+        add_css_rule(document, ".prompt", "color", "#e86d6d")?;
+        add_css_rule(document, ".prompt", "background-color", "#fff4f4")?;
+
+        add_css_rule(document, ".response", "font-size", "small")?;
+        add_css_rule(document, ".response", "color", "#450627")?;
+        add_css_rule(document, ".response", "background-color", "#f3f2f2")?;
+
+        add_css_rule(document, "html, body", "height", "100%".to_string())?;
+        add_css_rule(document, "html, body", "margin", "0".to_string())?;
+        add_css_rule(document, "html, body", "padding", "0".to_string())?;
+
+        add_css_rule(document, ".grid-container", "display", "grid".to_string())?;
+        add_css_rule(document, ".grid-container", "height", "100%".to_string())?;
+        add_css_rule(document, ".grid-container", "width", "100%".to_string())?;
+        add_css_rule(document, ".grid-container", "padding", "0".to_string())?;
+        add_css_rule(document, ".grid-container", "margin", "0".to_string())?;
+        add_css_rule(document, ".grid-container", "overflow", "auto".to_string())?;
+
+        add_css_rule(
+            document,
+            ".grid-container",
+            "grid-template-columns",
+            format!("repeat({col}, 1fr)"),
+        )?;
+        add_css_rule(
+            document,
+            ".grid-container",
+            "grid-template-rows",
+            format!("repeat({row}, 1fr)"),
+        )?;
+        add_css_rule(document, ".grid-container", "gap", ".1em".to_string())?;
+
+        add_css_rule(
+            document,
+            "#response_div",
+            "grid-column",
+            format!("{response_l} / span {response_w}"),
+        )?;
+        add_css_rule(
+            document,
+            "#response_div",
+            "grid-row",
+            format!("{response_t} / span {response_h}"),
+        )?;
+        add_css_rule(document, "#response_div", "overflow-y", "scroll")?;
+        add_css_rule(document, "#response_div", "overflow-wrap", "break-word")?;
+
+        add_css_rule(
+            document,
+            "#prompt_div",
+            "grid-column",
+            format!("{prompt_l} / span {prompt_w}"),
+        )?;
+        add_css_rule(
+            document,
+            "#prompt_div",
+            "grid-row",
+            format!("{prompt_t} / span {prompt_h}"),
+        )?;
+        add_css_rule(document, "#prompt_div", "border", "1px solid black")?;
+        add_css_rule(document, "#prompt_div", "display", "flex")?;
+        add_css_rule(document, "#prompt_div", "align-items", "center")?;
+        add_css_rule(document, "#prompt_input", "flex-grow", "1")?;
+
+        add_css_rule(
+            document,
+            "#side-panel-div",
+            "grid-column",
+            format!("{side_panel_l} / span {side_panel_w}"),
+        )?;
+        add_css_rule(
+            document,
+            "#side-panel-div",
+            "grid-row",
+            format!("{side_panel_t} / span {side_panel_h}"),
+        )?;
+        add_css_rule(document, "#side-panel-div", "border", "1px solid black")?;
+
+        // Pad the button to the left
+        add_css_rule(document, "#chat_submit", "margin-left", "1em")?;
+
+        set_focus_on_element("prompt_input");
+
+        // cancel_button.set_id(format!("cancel_request_{key}").as_str());
+        // cancel_button.set_attribute("class", "prompt_cancel_button")?;
+        // padding: 10px;
+        // add_css_rule(document, ".prompt_cancel_button", "padding", "10%")?;
+        // border: none;
+        // add_css_rule(document, ".prompt_cancel_button", "border", "none")?;
+        // background-color: #f0f0f0;
+        add_css_rule(
+            // Transparent
+            document,
+            ".prompt_cancel_button",
+            "background-color",
+            "rgba(0, 0, 0, 0)",
+        )?;
+        // color: #333;
+        // add_css_rule(document, ".prompt_cancel_button", "color", "#333")?;
+        // font-size: 16px;
+        // add_css_rule(document, ".prompt_cancel_button", "font-size", "16px")?;
+        // cursor: pointer;
+        // add_css_rule(document, ".svg_cancel_button", "cursor", "pointer")?;
+        // add_css_rule(document, ".svg_cancel_button", "width", "20px")?;
+        add_css_rule(document, ".prompt_cancel_button", "height", "1.5em")?;
+
+        // add_css_rule(document, ".prompt_cancel_button", "display", "flex")?;
+        // add_css_rule(
+        //     document,
+        //     ".prompt_cancel_button",
+        //     "justify-content",
+        //     "center",
+        // )?;
+
+        // Align the cancel button vertically
+        add_css_rule(document, "li", "display", "flex")?;
+        add_css_rule(document, "li", "align-items", "center")?;
+        add_css_rule(document, ".delete_conversation_button", "height", "1.0em")?;
+
+        add_css_rule(document, ".cost_span", "font-size", "small")?;
+        add_css_rule(document, ".conversation_name", "font-size", "small")?;
+        add_css_rule(document, ".conversation_name", "width", "65%")?;
+        add_css_rule(document, ".conversation_name", "display", "inline-block")?;
+        add_css_rule(document, ".conversation_name", "overflow", "hidden")?;
+        add_css_rule(document, ".conversation_name", "white-space", "nowrap")?;
+        add_css_rule(document, ".conversation_name", "margin-right", ".4em")?;
+        add_css_rule(document, "ul", "list-style", "none")?;
+
+        add_css_rule(document, ".meta_div", "width", "20%")?;
+        add_css_rule(document, ".meta_div", "font-size", "small")?;
+        add_css_rule(document, ".meta_div", "padding", "1em")?;
+        add_css_rule(document, ".meta_div", "margin", "1em")?;
+        add_css_rule(document, ".meta_div", "display", "flex")?;
+        add_css_rule(document, ".meta_div", "flex-direction", "column")?;
+        add_css_rule(document, ".meta_div", "justify-content", "end")?;
+        //
+        add_css_rule(document, ".response_li", "align-items", "stretch")?;
+        add_css_rule(document, ".prune_button", "align-self", "flex-start")?;
+        add_css_rule(document, ".pr_div", "width", "80%")?;
+        add_css_rule(document, ".pr_div", "margin-right", "1em")?;
+
+        Ok(chat_div)
+    }
+}
+
 /// A conversation.  If `prompt` is not `None` a chat prompt has been
 /// sent and a reply is being waited for.  Keeps a record of all
 /// responses received in `responses`.  
@@ -317,277 +588,6 @@ impl Drop for Chats {
     }
 }
 
-/// Hold the code for creating and manipulating the chat_div
-#[derive(Debug, Deserialize)]
-pub struct ChatDiv;
-
-impl LlmWebPage for ChatDiv {
-    /// Screen for the `chat` model interface
-    fn initialise_page(document: &Document) -> Result<Element, JsValue> {
-        // Manage state of the conversations with the LLM
-        let chats = Rc::new(RefCell::new(Chats::new()?));
-
-        // The container DIV that arranges the page
-        let chat_div = document
-            .create_element("div")
-            .expect("Could not create DIV element");
-
-        chat_div.set_id("chat_div");
-        chat_div.set_class_name("grid-container");
-
-        // The conversation with the LLM
-        let conversation_div = document
-            .create_element("div")
-            .expect("Could not create DIV element");
-        conversation_div.set_id("response_div");
-
-        // The entry for the prompt
-        let prompt_div = document
-            .create_element("div")
-            .expect("Could not create DIV element");
-        prompt_div.set_id("prompt_div");
-        let prompt_inp: HtmlInputElement = document
-            .create_element("input")
-            .map_err(|err| format!("Error creating input element: {:?}", err))?
-            .dyn_into::<HtmlInputElement>()
-            .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))?;
-        prompt_inp.set_value("");
-        prompt_inp.set_type("text");
-        prompt_inp.set_attribute("spellcheck", "true")?;
-        prompt_inp.set_id("prompt_input");
-        let cc = chats.clone();
-
-        // Detect when an <enter> key pressed and submit prompt
-        let prompt_input_enter = EventListener::new(&prompt_inp, "keyup", move |event| {
-            let c = cc.clone();
-            let event: KeyboardEvent = event.clone().unchecked_into();
-            let key_code = event.key_code();
-            if key_code == 13 {
-                // <enter> keycode
-                chat_submit_cb(c);
-            }
-        });
-        prompt_input_enter.forget();
-
-        prompt_div.append_child(&prompt_inp)?;
-
-        // The submit button
-        let submit_button: HtmlButtonElement = document
-            .create_element("button")
-            .map_err(|err| format!("Error creating button element: {:?}", err))?
-            .dyn_into::<HtmlButtonElement>()
-            .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
-        submit_button.set_inner_text("submit");
-        submit_button.set_id("chat_submit");
-        let cc = chats.clone();
-        let closure_onclick =
-            Closure::wrap(Box::new(move || chat_submit_cb(cc.clone())) as Box<dyn Fn()>);
-        submit_button.set_onclick(Some(closure_onclick.as_ref().unchecked_ref()));
-        closure_onclick.forget();
-
-        prompt_div.append_child(&submit_button)?;
-
-        let side_panel_div = make_side_panel(document, chats.clone())?;
-
-        // Put the page together
-        chat_div.append_child(&conversation_div).unwrap();
-        chat_div.append_child(&prompt_div).unwrap();
-        chat_div.append_child(&side_panel_div).unwrap();
-
-        // Prepare variables to control page layout
-
-        // Column and row count
-        let col = 160;
-        let row = 100;
-
-        // Arrange Page:
-
-        // * Side Panel takes left part of screen from under the menu
-        // bar to the top of status
-
-        // * The right portion is divided in two, vertically:
-
-        //  At the bottom a prompt entry area and submit button
-
-        //  At the top and taking up most of the remaining space is the
-        //  display of results.
-
-        // Side panel starts at top (1) left (1) and its height is the
-        // screen heigh. The side panel width (span) is to 4/16 of screen
-        // width
-        let side_panel_w = col * 4 / 16;
-        let side_panel_l = 1;
-        let side_panel_t = 1;
-        let side_panel_h = row;
-
-        // The response, prompt, and button panels all have the same left
-        // margin and width
-        let main_l = side_panel_l + side_panel_w;
-        let main_w = col - side_panel_w;
-
-        // Prompt div height is 10% of total
-        let prompt_h = (row * 10) / 100;
-        let prompt_t = row - (row * 10) / 100 + 1;
-        let prompt_l = main_l;
-        let prompt_w = main_w;
-
-        // Response top is below cost, to the right of the side panel,
-        // takes all the space left vertically and extends to the right of
-        // the screen
-        let response_t = 1;
-        let response_l = main_l;
-        let response_h = row - prompt_h;
-        let response_w = main_w;
-
-        // // Inject the style into the DOM.
-        // clear_css(document)?;
-
-        add_css_rule(document, ".prompt", "font-size", "small")?;
-        add_css_rule(document, ".prompt", "color", "#e86d6d")?;
-        add_css_rule(document, ".prompt", "background-color", "#fff4f4")?;
-
-        add_css_rule(document, ".response", "font-size", "small")?;
-        add_css_rule(document, ".response", "color", "#450627")?;
-        add_css_rule(document, ".response", "background-color", "#f3f2f2")?;
-
-        add_css_rule(document, "html, body", "height", "100%".to_string())?;
-        add_css_rule(document, "html, body", "margin", "0".to_string())?;
-        add_css_rule(document, "html, body", "padding", "0".to_string())?;
-
-        add_css_rule(document, ".grid-container", "display", "grid".to_string())?;
-        add_css_rule(document, ".grid-container", "height", "100%".to_string())?;
-        add_css_rule(document, ".grid-container", "width", "100%".to_string())?;
-        add_css_rule(document, ".grid-container", "padding", "0".to_string())?;
-        add_css_rule(document, ".grid-container", "margin", "0".to_string())?;
-        add_css_rule(document, ".grid-container", "overflow", "auto".to_string())?;
-
-        add_css_rule(
-            document,
-            ".grid-container",
-            "grid-template-columns",
-            format!("repeat({col}, 1fr)"),
-        )?;
-        add_css_rule(
-            document,
-            ".grid-container",
-            "grid-template-rows",
-            format!("repeat({row}, 1fr)"),
-        )?;
-        add_css_rule(document, ".grid-container", "gap", ".1em".to_string())?;
-
-        add_css_rule(
-            document,
-            "#response_div",
-            "grid-column",
-            format!("{response_l} / span {response_w}"),
-        )?;
-        add_css_rule(
-            document,
-            "#response_div",
-            "grid-row",
-            format!("{response_t} / span {response_h}"),
-        )?;
-        add_css_rule(document, "#response_div", "overflow-y", "scroll")?;
-        add_css_rule(document, "#response_div", "overflow-wrap", "break-word")?;
-
-        add_css_rule(
-            document,
-            "#prompt_div",
-            "grid-column",
-            format!("{prompt_l} / span {prompt_w}"),
-        )?;
-        add_css_rule(
-            document,
-            "#prompt_div",
-            "grid-row",
-            format!("{prompt_t} / span {prompt_h}"),
-        )?;
-        add_css_rule(document, "#prompt_div", "border", "1px solid black")?;
-        add_css_rule(document, "#prompt_div", "display", "flex")?;
-        add_css_rule(document, "#prompt_div", "align-items", "center")?;
-        add_css_rule(document, "#prompt_input", "flex-grow", "1")?;
-
-        add_css_rule(
-            document,
-            "#side-panel-div",
-            "grid-column",
-            format!("{side_panel_l} / span {side_panel_w}"),
-        )?;
-        add_css_rule(
-            document,
-            "#side-panel-div",
-            "grid-row",
-            format!("{side_panel_t} / span {side_panel_h}"),
-        )?;
-        add_css_rule(document, "#side-panel-div", "border", "1px solid black")?;
-
-        // Pad the button to the left
-        add_css_rule(document, "#chat_submit", "margin-left", "1em")?;
-
-        set_focus_on_element("prompt_input");
-
-        // cancel_button.set_id(format!("cancel_request_{key}").as_str());
-        // cancel_button.set_attribute("class", "prompt_cancel_button")?;
-        // padding: 10px;
-        // add_css_rule(document, ".prompt_cancel_button", "padding", "10%")?;
-        // border: none;
-        // add_css_rule(document, ".prompt_cancel_button", "border", "none")?;
-        // background-color: #f0f0f0;
-        add_css_rule(
-            // Transparent
-            document,
-            ".prompt_cancel_button",
-            "background-color",
-            "rgba(0, 0, 0, 0)",
-        )?;
-        // color: #333;
-        // add_css_rule(document, ".prompt_cancel_button", "color", "#333")?;
-        // font-size: 16px;
-        // add_css_rule(document, ".prompt_cancel_button", "font-size", "16px")?;
-        // cursor: pointer;
-        // add_css_rule(document, ".svg_cancel_button", "cursor", "pointer")?;
-        // add_css_rule(document, ".svg_cancel_button", "width", "20px")?;
-        add_css_rule(document, ".prompt_cancel_button", "height", "1.5em")?;
-
-        // add_css_rule(document, ".prompt_cancel_button", "display", "flex")?;
-        // add_css_rule(
-        //     document,
-        //     ".prompt_cancel_button",
-        //     "justify-content",
-        //     "center",
-        // )?;
-
-        // Align the cancel button vertically
-        add_css_rule(document, "li", "display", "flex")?;
-        add_css_rule(document, "li", "align-items", "center")?;
-        add_css_rule(document, ".delete_conversation_button", "height", "1.0em")?;
-
-        add_css_rule(document, ".cost_span", "font-size", "small")?;
-        add_css_rule(document, ".conversation_name", "font-size", "small")?;
-        add_css_rule(document, ".conversation_name", "width", "65%")?;
-        add_css_rule(document, ".conversation_name", "display", "inline-block")?;
-        add_css_rule(document, ".conversation_name", "overflow", "hidden")?;
-        add_css_rule(document, ".conversation_name", "white-space", "nowrap")?;
-        add_css_rule(document, ".conversation_name", "margin-right", ".4em")?;
-        add_css_rule(document, "ul", "list-style", "none")?;
-
-        add_css_rule(document, ".meta_div", "width", "20%")?;
-        add_css_rule(document, ".meta_div", "font-size", "small")?;
-        add_css_rule(document, ".meta_div", "padding", "1em")?;
-        add_css_rule(document, ".meta_div", "margin", "1em")?;
-        add_css_rule(document, ".meta_div", "display", "flex")?;
-        add_css_rule(document, ".meta_div", "flex-direction", "column")?;
-        add_css_rule(document, ".meta_div", "justify-content", "end")?;
-        //
-        add_css_rule(document, ".response_li", "align-items", "stretch")?;
-        add_css_rule(document, ".prune_button", "align-self", "flex-start")?;
-        add_css_rule(document, ".pr_div", "width", "80%")?;
-        add_css_rule(document, ".pr_div", "margin-right", "1em")?;
-
-        Ok(chat_div)
-    }
-}
-
 /// Make a new conversation
 fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
     match chats.try_borrow_mut() {
@@ -690,6 +690,7 @@ fn process_chat_response(
     Ok(())
 }
 
+/// Remove all responses from the screen
 fn clear_response_screen() {
     let document = window()
         .and_then(|win| win.document())
@@ -771,6 +772,186 @@ fn make_request_cb(
             set_focus_on_element("username_input");
         }
         _ => (),
+    };
+}
+/// Callback for conversation select
+fn select_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
+    let target = event.target().unwrap();
+    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+
+    // Get the ID off the clicked radio button
+    let id = target_element.id();
+
+    // Radio: conversation_radio_1
+    let id = id.as_str();
+    let id = &id["conversation_radio_".len()..];
+    match id.parse() {
+        Ok(key) => {
+            // `key` is the selected conversation
+            match chats.try_borrow_mut() {
+                Ok(mut chats) => match chats.set_current_conversation(key) {
+                    Ok(()) => (),
+                    Err(_err) => {
+                        print_to_console_s(format!("Failed to set current conversation to: {key}"));
+                        panic![];
+                    }
+                },
+                Err(_err) => {
+                    print_to_console("Cannot borrow_mut chats current_radio_click handler");
+                    panic![];
+                }
+            };
+            // Redraw the response screen
+            match chats.try_borrow() {
+                // Forced unwrap OK because `key` is current conversation
+                Ok(chats_ref) => {
+                    let conv = chats_ref.conversations.get(&key).unwrap();
+                    update_response_screen(conv, chats.clone());
+                }
+                Err(err) => print_to_console_s(format!(
+                    "select_conversation_cb: Failed to clone chats: {err:?}"
+                )),
+            }
+        }
+        Err(err) => print_to_console_s(format!("Cannot parse id: {id}. Error: {err:?}")),
+    };
+
+    //....
+    remake_side_panel(chats.clone());
+}
+
+/// New conversation callback
+fn new_conversation_cb(chats: Rc<RefCell<Chats>>) {
+    match make_new_conversation(chats.clone()) {
+        Ok(key) => {
+            set_current_conversation(chats.clone(), key);
+            // Make the new conversation the current.  FIXME:  This is convoluted
+            match chats.try_borrow() {
+                Ok(chats_ref) => {
+                    update_response_screen(
+                        chats_ref.conversations.get(&key).unwrap(),
+                        chats.clone(),
+                    );
+                }
+                Err(err) => print_to_console_s(format!(
+                    "new_conversation_callback: Failed to clone chats: {err:?}"
+                )),
+            }
+        }
+        Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
+    }
+    remake_side_panel(chats.clone());
+}
+
+/// Style experiment button
+fn style_experiment_cb() {
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let mut cs_rules = get_css_rules(&document).unwrap();
+    cs_rules
+        .insert("#side-panel-div", "background-color", "aliceblue")
+        .unwrap();
+    match clear_css(&document) {
+        Ok(()) => (),
+        Err(err) => print_to_console_s(format!(
+            "Failed clear_css {}:{}",
+            err.as_string().unwrap_or("<UNKNOWN>".to_string()),
+            err.js_typeof().as_string().unwrap_or("".to_string()),
+        )),
+    };
+    set_css_rules(&document, &cs_rules).unwrap();
+}
+
+/// Calcel button callback
+fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
+    print_to_console("cancel_cb 1");
+    let target = event.target().unwrap();
+    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+
+    // Get the ID off the clicked radio button
+    let id = target_element.id();
+    print_to_console_s(format!("cancel_cb 1.3 id: {id}"));
+    let id = id.as_str();
+    print_to_console_s(format!("cancel_cb 1.4 id: {id}"));
+    let id = &id["cancel_request_".len()..];
+    print_to_console_s(format!("cancel_cb 1.5 id: {id}"));
+    let id = match id.parse::<usize>() {
+        Ok(id) => id,
+        Err(_err) => {
+            print_to_console_s(format!("cancel_cb cannot parse id from event: {event:?}"));
+            return;
+        }
+    };
+
+    match chats.try_borrow_mut() {
+        Ok(mut m_chats) => {
+            match m_chats.get_conversation(&id) {
+                Some(cc) => match &cc.request {
+                    Some(xhr) => {
+                        print_to_console_s(format!("cancel_cb 1.6 id: {id}"));
+                        xhr.abort().unwrap();
+                        print_to_console_s(format!("cancel_cb 1.7 id: {id}"));
+                        if let Some(cc) = m_chats.get_conversation_mut(&id) {
+                            cc.prompt = None;
+                            print_to_console_s(format!("cancel_cb 1.7 id: {id}"));
+                            cc.request = None;
+                        } else {
+                            print_to_console("Cannot get current conversation for abort");
+                        }
+                    }
+                    None => print_to_console("Got no xhr"),
+                },
+                None => print_to_console("Got no cc"),
+            };
+        }
+        Err(err) => {
+            print_to_console_s(format!(
+                "Failed to borrow chats `make_conversation_list` {err:?}"
+            ));
+            panic![];
+        }
+    };
+    remake_side_panel(chats.clone());
+}
+
+/// Callback for conversation delete button
+fn delete_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
+    print_to_console("delete_conversation_cb 1");
+    let target = event.target().unwrap();
+    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+
+    // Get the ID off the clicked radio button
+    let id = target_element.id();
+    let id = id.as_str();
+    let id = &id["delete_conversation_".len()..];
+    match id.parse::<usize>() {
+        Err(err) => print_to_console_s(format!(
+            "Cannot parse {id} setting up delete conversation button: Error: {err}"
+        )),
+        Ok(key) => {
+            print_to_console("delete_conversation_cb 1.1  Got key");
+            // `key` is the conversation to delete
+            match chats.try_borrow_mut() {
+                Err(_err) => {
+                    print_to_console("Delete conversation handler faied to borrow mut chats");
+                    panic![];
+                }
+                Ok(mut chats_mut) => {
+                    if let Some(cc) = chats_mut.current_conversation {
+                        if cc == key {
+                            // Deleting current conversation
+                            clear_response_screen();
+                        }
+                    }
+                    chats_mut.delete_conversation(key);
+                }
+            };
+            print_to_console("delete_conversation_cb 1.2");
+
+            remake_side_panel(chats.clone());
+            print_to_console("delete_conversation_cb 2");
+        }
     };
 }
 
@@ -934,187 +1115,6 @@ fn prompt_div_inactive_query() -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Callback for conversation select
-fn select_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
-    let target = event.target().unwrap();
-    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
-
-    // Get the ID off the clicked radio button
-    let id = target_element.id();
-
-    // Radio: conversation_radio_1
-    let id = id.as_str();
-    let id = &id["conversation_radio_".len()..];
-    match id.parse() {
-        Ok(key) => {
-            // `key` is the selected conversation
-            match chats.try_borrow_mut() {
-                Ok(mut chats) => match chats.set_current_conversation(key) {
-                    Ok(()) => (),
-                    Err(_err) => {
-                        print_to_console_s(format!("Failed to set current conversation to: {key}"));
-                        panic![];
-                    }
-                },
-                Err(_err) => {
-                    print_to_console("Cannot borrow_mut chats current_radio_click handler");
-                    panic![];
-                }
-            };
-            // Redraw the response screen
-            match chats.try_borrow() {
-                // Forced unwrap OK because `key` is current conversation
-                Ok(chats_ref) => {
-                    let conv = chats_ref.conversations.get(&key).unwrap();
-                    update_response_screen(conv, chats.clone());
-                }
-                Err(err) => print_to_console_s(format!(
-                    "select_conversation_cb: Failed to clone chats: {err:?}"
-                )),
-            }
-        }
-        Err(err) => print_to_console_s(format!("Cannot parse id: {id}. Error: {err:?}")),
-    };
-
-    //....
-    remake_side_panel(chats.clone());
-}
-
-/// New conversation callback
-fn new_conversation_callback(chats: Rc<RefCell<Chats>>) {
-    match make_new_conversation(chats.clone()) {
-        Ok(key) => {
-            set_current_conversation(chats.clone(), key);
-            // Make the new conversation the current.  FIXME:  This is convoluted
-            match chats.try_borrow() {
-                Ok(chats_ref) => {
-                    update_response_screen(
-                        chats_ref.conversations.get(&key).unwrap(),
-                        chats.clone(),
-                    );
-                }
-                Err(err) => print_to_console_s(format!(
-                    "new_conversation_callback: Failed to clone chats: {err:?}"
-                )),
-            }
-        }
-        Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
-    }
-    remake_side_panel(chats.clone());
-}
-
-/// Style experiment button
-fn style_experiment_cb() {
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    let mut cs_rules = get_css_rules(&document).unwrap();
-    cs_rules
-        .insert("#side-panel-div", "background-color", "aliceblue")
-        .unwrap();
-    match clear_css(&document) {
-        Ok(()) => (),
-        Err(err) => print_to_console_s(format!(
-            "Failed clear_css {}:{}",
-            err.as_string().unwrap_or("<UNKNOWN>".to_string()),
-            err.js_typeof().as_string().unwrap_or("".to_string()),
-        )),
-    };
-    set_css_rules(&document, &cs_rules).unwrap();
-}
-
-/// Calcel button callback
-fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
-    print_to_console("cancel_cb 1");
-    let target = event.target().unwrap();
-    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
-
-    // Get the ID off the clicked radio button
-    let id = target_element.id();
-    print_to_console_s(format!("cancel_cb 1.3 id: {id}"));
-    let id = id.as_str();
-    print_to_console_s(format!("cancel_cb 1.4 id: {id}"));
-    let id = &id["cancel_request_".len()..];
-    print_to_console_s(format!("cancel_cb 1.5 id: {id}"));
-    let id = match id.parse::<usize>() {
-        Ok(id) => id,
-        Err(_err) => {
-            print_to_console_s(format!("cancel_cb cannot parse id from event: {event:?}"));
-            return;
-        }
-    };
-
-    match chats.try_borrow_mut() {
-        Ok(mut m_chats) => {
-            match m_chats.get_conversation(&id) {
-                Some(cc) => match &cc.request {
-                    Some(xhr) => {
-                        print_to_console_s(format!("cancel_cb 1.6 id: {id}"));
-                        xhr.abort().unwrap();
-                        print_to_console_s(format!("cancel_cb 1.7 id: {id}"));
-                        if let Some(cc) = m_chats.get_conversation_mut(&id) {
-                            cc.prompt = None;
-                            print_to_console_s(format!("cancel_cb 1.7 id: {id}"));
-                            cc.request = None;
-                        } else {
-                            print_to_console("Cannot get current conversation for abort");
-                        }
-                    }
-                    None => print_to_console("Got no xhr"),
-                },
-                None => print_to_console("Got no cc"),
-            };
-        }
-        Err(err) => {
-            print_to_console_s(format!(
-                "Failed to borrow chats `make_conversation_list` {err:?}"
-            ));
-            panic![];
-        }
-    };
-    remake_side_panel(chats.clone());
-}
-
-/// Callback for conversation delete button
-fn delete_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
-    print_to_console("delete_conversation_cb 1");
-    let target = event.target().unwrap();
-    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
-
-    // Get the ID off the clicked radio button
-    let id = target_element.id();
-    let id = id.as_str();
-    let id = &id["delete_conversation_".len()..];
-    match id.parse::<usize>() {
-        Err(err) => print_to_console_s(format!(
-            "Cannot parse {id} setting up delete conversation button: Error: {err}"
-        )),
-        Ok(key) => {
-            print_to_console("delete_conversation_cb 1.1  Got key");
-            // `key` is the conversation to delete
-            match chats.try_borrow_mut() {
-                Err(_err) => {
-                    print_to_console("Delete conversation handler faied to borrow mut chats");
-                    panic![];
-                }
-                Ok(mut chats_mut) => {
-                    if let Some(cc) = chats_mut.current_conversation {
-                        if cc == key {
-                            // Deleting current conversation
-                            clear_response_screen();
-                        }
-                    }
-                    chats_mut.delete_conversation(key);
-                }
-            };
-            print_to_console("delete_conversation_cb 1.2");
-
-            remake_side_panel(chats.clone());
-            print_to_console("delete_conversation_cb 2");
-        }
-    };
-}
-
 /// Called to construct the messages for a request.  Each interaction
 /// with the LLM includes a history of prevous interactions.  In the
 /// general case this is the history of the current conversation.
@@ -1236,7 +1236,7 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     let new_conversation = new_button(document, "new_conversation", "New Conversation")?;
     let chats_clone = chats.clone();
     let new_conversation_closure = Closure::wrap(Box::new(move || {
-        new_conversation_callback(chats_clone.clone());
+        new_conversation_cb(chats_clone.clone());
     }) as Box<dyn Fn()>);
 
     new_conversation.set_onclick(Some(new_conversation_closure.as_ref().unchecked_ref()));
@@ -1281,7 +1281,7 @@ fn make_conversation_list(
     document: &Document,
     chats: Rc<RefCell<Chats>>,
 ) -> Result<Element, JsValue> {
-    print_to_console("make_conversation_list 1");
+    // print_to_console("make_conversation_list 1");
 
     let conversation_list_div = document.create_element("div")?;
 
@@ -1315,7 +1315,6 @@ fn make_conversation_list(
                 };
                 if current {
                     if active {
-                        print_to_console("make_conversation_list 1.5  current && active");
                         // Deactivate the input, grey it out, while the request is active.
                         // Remember to undo this when the response comes back.
                         prompt_div_active_query(conversation.prompt.as_ref().unwrap())?;
