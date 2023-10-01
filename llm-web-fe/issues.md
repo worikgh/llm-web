@@ -4,12 +4,10 @@
 * Fonts: I am not in control of the fonts
 * Need to have the initial purpose prompt
 * Implement temperature
-* Recover from invalid session inside chat_div
 * Replay a conversation (starting a new conversation?)
 * Popup/tool-tip type thing
-* I need a way to enter whole files.  Copy and paste will do at first.
-* Button to cop a response to the clipboard
-* A button to copy a conversation to the keyboard
+* Button to copy a response to the clipboard
+* A button to copy a conversation to the clipboard
 
 # BUG(s)
 
