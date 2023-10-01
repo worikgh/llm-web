@@ -36,6 +36,7 @@ features = [
 'HtmlOptionsCollection',
 'HtmlSelectElement',
 'HtmlStyleElement',
+'HtmlTextAreaElement',
 'KeyboardEvent',
 'MouseEvent',
 'Node',

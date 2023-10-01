@@ -34,7 +34,7 @@ use web_sys::{Event, XmlHttpRequest};
 use wasm_bindgen::prelude::*;
 use web_sys::{
     window, Document, Element, HtmlButtonElement, HtmlImageElement, HtmlInputElement,
-    HtmlOptionElement, HtmlSelectElement,
+    HtmlOptionElement, HtmlSelectElement, HtmlTextAreaElement,
 };
 
 /// Hold the code for creating and manipulating the chat_div
@@ -104,8 +104,21 @@ impl LlmWebPage for ChatDiv {
             Closure::wrap(Box::new(move || chat_submit_cb(cc.clone())) as Box<dyn Fn()>);
         submit_button.set_onclick(Some(closure_onclick.as_ref().unchecked_ref()));
         closure_onclick.forget();
-
         prompt_div.append_child(&submit_button)?;
+
+        // Button to open window for multi line text
+        let multi_line_button: HtmlImageElement = document
+            .create_element("img")?
+            .dyn_into::<HtmlImageElement>()?;
+        multi_line_button.set_src("data/multiline_open.png");
+        let cc = chats.clone();
+        let open_multi_line_closure =
+            Closure::wrap(Box::new(move || open_multi_line_window(cc.clone())) as Box<dyn Fn()>);
+        multi_line_button.set_onclick(Some(open_multi_line_closure.as_ref().unchecked_ref()));
+        open_multi_line_closure.forget();
+
+        multi_line_button.set_id("open_multi_line");
+        prompt_div.append_child(&multi_line_button)?;
 
         let side_panel_div = make_side_panel(document, chats.clone())?;
 
@@ -161,6 +174,16 @@ impl LlmWebPage for ChatDiv {
 
         // // Inject the style into the DOM.
         // clear_css(document)?;
+
+        add_css_rule(document, "#multi_line_div", "grid-row", "1 / span 100")?;
+        add_css_rule(document, "#multi_line_div", "grid-column", "41 / span 120")?;
+        add_css_rule(document, "#multi_line_div", "overflow-wrap", "break-word")?;
+        add_css_rule(document, "#multi_line_div", "overflow-y", "scroll")?;
+        add_css_rule(document, "#multi_line_div", "z-index", "9999")?;
+        add_css_rule(document, "#multi_line_div", "opacity", "1")?;
+        add_css_rule(document, "#multi_line_div", "background-color", "white")?;
+        add_css_rule(document, "#multi_line_textarea", "height", "80%")?;
+        add_css_rule(document, "#multi_line_textarea", "width", "100%")?;
 
         add_css_rule(document, ".prompt", "font-size", "small")?;
         add_css_rule(document, ".prompt", "color", "#e86d6d")?;
@@ -244,7 +267,10 @@ impl LlmWebPage for ChatDiv {
         // Pad the button to the left
         add_css_rule(document, "#chat_submit", "margin-left", "1em")?;
 
-        set_focus_on_element("prompt_input");
+        // Multi line window open button
+        add_css_rule(document, "#open_multi_line", "margin-left", ".5em")?;
+        add_css_rule(document, "#open_multi_line", "margin-right", ".5em")?;
+        add_css_rule(document, "#open_multi_line", "height", "2em")?;
 
         // cancel_button.set_id(format!("cancel_request_{key}").as_str());
         // cancel_button.set_attribute("class", "prompt_cancel_button")?;
@@ -605,6 +631,74 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
     }
 }
 
+/// Open an area for entering multi line text for a prompt and
+/// submitting it
+fn open_multi_line_window(_chats: Rc<RefCell<Chats>>) {
+    // print_to_console("open_multi_line_window 1");
+    let document = get_doc();
+    let multi_line_div = document.create_element("DIV").unwrap();
+
+    multi_line_div.set_id("multi_line_div");
+    let multi_line_textarea: HtmlTextAreaElement = document
+        .create_element("textarea")
+        .unwrap()
+        .dyn_into::<HtmlTextAreaElement>()
+        .unwrap();
+
+    multi_line_textarea.set_id("multi_line_textarea");
+    multi_line_div.append_child(&multi_line_textarea).unwrap();
+
+    // Submit and cancel buttons
+    let cancel_button: HtmlButtonElement = document
+        .create_element("button")
+        .unwrap()
+        .dyn_into::<HtmlButtonElement>()
+        .unwrap();
+    cancel_button.set_inner_text("Cancel");
+    let cancel_closure = Closure::wrap(Box::new(close_multi_line_window) as Box<dyn Fn()>);
+    cancel_button.set_onclick(Some(cancel_closure.as_ref().unchecked_ref()));
+    cancel_closure.forget();
+    multi_line_div.append_child(&cancel_button).unwrap();
+
+    let submit_button: HtmlButtonElement = document
+        .create_element("button")
+        .unwrap()
+        .dyn_into::<HtmlButtonElement>()
+        .unwrap();
+    submit_button.set_inner_text("Submit");
+    let cc = _chats.clone();
+    let submit_closure = Closure::wrap(Box::new(move || {
+        submit_multi_line_window_cb(cc.clone());
+        close_multi_line_window()
+    }) as Box<dyn Fn()>);
+    submit_button.set_onclick(Some(submit_closure.as_ref().unchecked_ref()));
+    submit_closure.forget();
+    multi_line_div.append_child(&submit_button).unwrap();
+
+    let chat_div = document.get_element_by_id("chat_div").unwrap();
+    chat_div.append_child(&multi_line_div).unwrap();
+}
+fn submit_multi_line_window_cb(chats: Rc<RefCell<Chats>>) {
+    let document = get_doc();
+    let prompt: String = document
+        .get_element_by_id("multi_line_textarea")
+        .unwrap()
+        .dyn_into::<HtmlTextAreaElement>()
+        .unwrap()
+        .value();
+    send_prompt(prompt, chats.clone());
+    remake_side_panel(chats.clone());
+}
+fn close_multi_line_window() {
+    let document = get_doc();
+    let chat_div = document.get_element_by_id("chat_div").unwrap();
+    if let Some(multi_line_div) = document.get_element_by_id("multi_line_div") {
+        chat_div.remove_child(&multi_line_div).unwrap();
+    } else {
+        print_to_console("close_multi_line_window called and multi_line_div not present");
+    }
+}
+
 /// Update the current conversation
 fn set_current_conversation(chats: Rc<RefCell<Chats>>, key: usize) {
     if let Ok(mut chats) = chats.try_borrow_mut() {
@@ -955,23 +1049,9 @@ fn delete_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
     };
 }
 
-/// The callback for the submit button to send a prompt to the model.
-fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
-    // print_to_console("chat_submit 1");
-    // Get the contents of the prompt
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    let prompt_input: HtmlInputElement = document
-        .get_element_by_id("prompt_input")
-        .unwrap()
-        .dyn_into::<HtmlInputElement>()
-        .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
-        .unwrap();
-    let prompt = prompt_input.value();
-    prompt_input.set_value("");
-    set_status(format!("Sending prompt: {prompt}").as_str());
-
+/// Marshal a message to send to LLM
+fn send_prompt(prompt: String, chats: Rc<RefCell<Chats>>) {
+    let document = get_doc();
     // The history or the chat so far, plus latest prompt
     let messages: Vec<LLMMessage> = build_messages(chats.clone(), prompt.clone());
     // The model to use
@@ -1031,6 +1111,84 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
         }
         Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
     };
+}
+
+/// The callback for the submit button to send a prompt to the model.
+fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
+    // print_to_console("chat_submit 1");
+    // Get the contents of the prompt
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let prompt_input: HtmlInputElement = document
+        .get_element_by_id("prompt_input")
+        .unwrap()
+        .dyn_into::<HtmlInputElement>()
+        .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
+        .unwrap();
+    let prompt = prompt_input.value();
+    prompt_input.set_value("");
+    set_status(format!("Sending prompt: {prompt}").as_str());
+    send_prompt(prompt, chats.clone());
+    // // The history or the chat so far, plus latest prompt
+    // let messages: Vec<LLMMessage> = build_messages(chats.clone(), prompt.clone());
+    // // The model to use
+    // let model = get_model();
+
+    // // Get the token
+    // let token: String;
+    // if let Some(t) = document.body().unwrap().get_attribute("data.token") {
+    //     token = t;
+    // } else {
+    //     todo!("Set status concerning error: No data token");
+    // }
+
+    // let chat_prompt = ChatPrompt {
+    //     model,
+    //     messages,
+    //     temperature: 1.0, // Todo: Get this from user interface
+    //     token,
+    // };
+
+    // let message: Message = Message::from(chat_prompt);
+
+    // // Need to tell the callback for `make_request` what conversation
+    // // is being used.  Cannot rely "current_convesation" as it may
+    // // change while the network request is under way
+    // let current_conversation: usize = match chats.try_borrow() {
+    //     Err(_err) => {
+    //         print_to_console(
+    //             "Failed borrowing chats to get current conversation for request callback",
+    //         );
+    //         panic![];
+    //         //            return;
+    //     }
+    //     Ok(chats) => match chats.current_conversation {
+    //         Some(cc) => cc,
+    //         None => {
+    //             print_to_console(
+    //                 "Failed borrowing chats to get current conversation for request callback",
+    //             );
+    //             panic![]; //                return;
+    //         }
+    //     },
+    // };
+    // let chats_make_req_cb = chats.clone();
+    // let xhr = make_request(
+    //     message,
+    //     move |message: Message| {
+    //         make_request_cb(message, chats_make_req_cb.clone(), current_conversation)
+    //     },
+    //     abort_request_cb,
+    // )
+    // .unwrap();
+    // match chats.try_borrow_mut() {
+    //     Err(err) => {
+    //         print_to_console_s(format!("Failed to borrow chats `chat_submit_cb`: {err:?}"));
+    //         panic![];
+    //     }
+    //     Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
+    // };
 
     remake_side_panel(chats.clone());
 }
