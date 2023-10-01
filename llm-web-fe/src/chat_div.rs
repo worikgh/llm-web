@@ -449,11 +449,14 @@ impl Conversation {
         if self.responses.is_empty() {
             format!("{}: Empty conversation", self.key)
         } else {
-            format!(
-                "{}: {}",
-                self.key,
-                self.responses.first().unwrap().0.clone()
-            )
+            let label = &self.responses.first().unwrap().0;
+            let label = if label.len() > 17 {
+                label[..17].to_string()
+            } else {
+                label.to_string()
+            };
+
+            format!("{}: {}", self.key, label)
         }
     }
 }
