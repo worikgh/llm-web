@@ -34,7 +34,7 @@ use web_sys::{Event, XmlHttpRequest};
 use wasm_bindgen::prelude::*;
 use web_sys::{
     window, Document, Element, HtmlButtonElement, HtmlImageElement, HtmlInputElement,
-    HtmlOptionElement, HtmlSelectElement, HtmlTextAreaElement,
+    HtmlOptionElement, HtmlSelectElement, HtmlSpanElement, HtmlTextAreaElement,
 };
 
 /// Hold the code for creating and manipulating the chat_div
@@ -377,19 +377,18 @@ impl Conversation {
         let result = document.create_element("UL")?;
         result.set_id("responses_ul");
 
-        for (c, i) in self.responses.iter().enumerate() {
+        for (c, prompt_response) in self.responses.iter().enumerate() {
             let li = document.create_element("LI")?;
             li.set_class_name("response_li");
-            let prompt = i.0.as_str();
+            let prompt = prompt_response.0.as_str();
             let prompt = text_for_html(prompt);
-            let respone = i.1.response.as_str();
+            let respone = prompt_response.1.response.as_str();
             let response = text_for_html(respone);
-            let model = i.1.model.as_str();
+            let model = prompt_response.1.model.as_str();
             let model_span = document.create_element("SPAN")?;
             model_span.set_inner_html(model);
             let meta_div = document.create_element("DIV")?;
             meta_div.set_attribute("class", "meta_div")?;
-            meta_div.append_child(&model_span)?;
 
             let prune_button = document
                 .create_element("button")?
@@ -404,12 +403,23 @@ impl Conversation {
             prune_button.set_inner_text("Prune");
             prune_button.set_class_name("prune_button");
             closure_prune_onclick.forget();
-            meta_div.append_child(&prune_button)?;
 
             let cost = document.create_element("span")?;
-            cost.set_inner_html(format!("Cost: {:0.4}\u{00A2}", i.1.cost).as_str());
+            cost.set_inner_html(format!("Cost: {:0.4}\u{00A2}", prompt_response.1.cost).as_str());
             cost.set_class_name("meta_cost_span");
+
+            let prompt_count = prompt.len();
+            let response_count = prompt_response.1.response.len();
+            let count_span = document
+                .create_element("span")?
+                .dyn_into::<HtmlSpanElement>()?;
+            count_span.set_inner_text(
+                format!("Prompt/Response {prompt_count}/{response_count}").as_str(),
+            );
+            meta_div.append_child(&count_span)?;
             meta_div.append_child(&cost)?;
+            meta_div.append_child(&model_span)?;
+            meta_div.append_child(&prune_button)?;
 
             let display_prompt_div = document.create_element("DIV")?;
             display_prompt_div.set_attribute("class", "prompt")?;

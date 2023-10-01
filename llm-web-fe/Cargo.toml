@@ -34,6 +34,7 @@ features = [
 'HtmlLinkElement',
 'HtmlOptionElement',
 'HtmlOptionsCollection',
+'HtmlSpanElement',
 'HtmlSelectElement',
 'HtmlStyleElement',
 'HtmlTextAreaElement',
