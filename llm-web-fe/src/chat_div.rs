@@ -33,8 +33,8 @@ use web_sys::{Event, XmlHttpRequest};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{
-    window, Document, Element, HtmlButtonElement, HtmlElement, HtmlImageElement, HtmlInputElement,
-    HtmlOptionElement, HtmlSelectElement, HtmlSpanElement, HtmlTextAreaElement, MouseEvent,
+    window, Document, Element, HtmlButtonElement, HtmlImageElement, HtmlInputElement,
+    HtmlOptionElement, HtmlSelectElement, HtmlSpanElement, HtmlTextAreaElement,
 };
 
 /// Hold the code for creating and manipulating the chat_div
@@ -111,6 +111,9 @@ impl LlmWebPage for ChatDiv {
             .create_element("img")?
             .dyn_into::<HtmlImageElement>()?;
         multi_line_button.set_src("data/multiline_open.png");
+
+        // Tool tip
+        multi_line_button.set_title("Open multi line text");
         let cc = chats.clone();
         let open_multi_line_closure =
             Closure::wrap(Box::new(move || open_multi_line_window(cc.clone())) as Box<dyn Fn()>);
@@ -118,6 +121,7 @@ impl LlmWebPage for ChatDiv {
         open_multi_line_closure.forget();
 
         multi_line_button.set_id("open_multi_line");
+
         prompt_div.append_child(&multi_line_button)?;
 
         let side_panel_div = make_side_panel(document, chats.clone())?;
