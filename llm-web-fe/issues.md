@@ -11,7 +11,4 @@
 
 # BUG(s)
 
-* FAILED Borrows!!  Making a new converstaion triggers it.  Added panics on each failure 
-* `update_response_screen` Needs error checking
-* Word wrapping in the Response screen is broken, wraps in wrong places
 * The left hand panel, for metadata, in the response screen is too wide.  Should word wrap the model name
