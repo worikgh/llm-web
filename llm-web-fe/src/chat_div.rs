@@ -389,8 +389,12 @@ impl Conversation {
             let respone = prompt_response.1.response.as_str();
             let response = text_for_html(respone);
             let model = prompt_response.1.model.as_str();
-            let model_span = document.create_element("SPAN")?;
+            let model_span = document
+                .create_element("SPAN")?
+                .dyn_into::<HtmlSpanElement>()?;
             model_span.set_inner_html(model);
+            model_span.set_title("Model");
+
             let meta_div = document.create_element("DIV")?;
             meta_div.set_attribute("class", "meta_div")?;
 
@@ -408,29 +412,25 @@ impl Conversation {
             prune_button.set_class_name("prune_button");
             closure_prune_onclick.forget();
 
-            let cost = document.create_element("span")?;
-            cost.set_inner_html(format!("Cost: {:0.4}\u{00A2}", prompt_response.1.cost).as_str());
+            let cost = document
+                .create_element("span")?
+                .dyn_into::<HtmlSpanElement>()?;
+            cost.set_inner_html(format!("{:0.4}\u{00A2}", prompt_response.1.cost).as_str());
             cost.set_class_name("meta_cost_span");
+            cost.set_title("Cost");
 
             let prompt_count = prompt.len();
             let response_count = prompt_response.1.response.len();
 
-            let prompt_count_span = document
+            let count_span = document
                 .create_element("span")?
                 .dyn_into::<HtmlSpanElement>()?;
-            prompt_count_span.set_inner_text(format!("{prompt_count}").as_str());
-            prompt_count_span.set_id("prompt_count_span");
-            prompt_count_span.set_class_name("prompt_count_span");
-
-            let response_count_span = document
-                .create_element("span")?
-                .dyn_into::<HtmlSpanElement>()?;
-            response_count_span.set_inner_text(format!("{response_count}").as_str());
-            response_count_span.set_id("response_count_span");
-            response_count_span.set_class_name("response_count_span");
-
-            meta_div.append_child(&prompt_count_span)?;
-            meta_div.append_child(&response_count_span)?;
+            count_span.set_inner_html(
+                format!("\u{2191}{prompt_count}&nbsp;\u{2193}{response_count}").as_str(),
+            );
+            count_span.set_class_name("count_span");
+            count_span.set_title("Bytes \u{2191}up \u{2193}down");
+            meta_div.append_child(&count_span)?;
             meta_div.append_child(&cost)?;
             meta_div.append_child(&model_span)?;
             meta_div.append_child(&prune_button)?;
