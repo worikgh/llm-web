@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use crate::utility::{print_to_console, print_to_console_s};
+use crate::utility::print_to_console;
 use std::collections::BTreeMap;
 use std::fmt;
 use wasm_bindgen::prelude::*;
@@ -70,7 +70,7 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
             match wasm_bindgen::JsCast::dyn_into::<web_sys::CssStyleSheet>(style_sheet) {
                 Ok(css) => css,
                 Err(err) => {
-                    print_to_console_s(format!("{err:?} Not a CssStyleSheet"));
+                    print_to_console(format!("{err:?} Not a CssStyleSheet"));
                     continue;
                 }
             };
@@ -83,7 +83,7 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
                 match wasm_bindgen::JsCast::dyn_into::<web_sys::CssStyleRule>(css_rule) {
                     Ok(c) => c,
                     Err(err) => {
-                        print_to_console_s(format!("{err:?} Not a CssStyleRule"));
+                        print_to_console(format!("{err:?} Not a CssStyleRule"));
                         continue;
                     }
                 };
@@ -100,7 +100,7 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
                 let property_name: String = match scc_style_dec.get(k) {
                     Some(s) => s,
                     None => {
-                        print_to_console_s(format!("{i}/{j}/{k} no style text"));
+                        print_to_console(format!("{i}/{j}/{k} no style text"));
                         continue;
                     }
                 };
@@ -196,7 +196,7 @@ pub fn clear_css(document: &Document) -> Result<(), JsValue> {
             match wasm_bindgen::JsCast::dyn_into::<web_sys::CssStyleSheet>(style_sheet) {
                 Ok(css) => css,
                 Err(err) => {
-                    print_to_console_s(format!("{err:?} Not a CssStyleSheet"));
+                    print_to_console(format!("{err:?} Not a CssStyleSheet"));
                     continue;
                 }
             };
@@ -206,7 +206,7 @@ pub fn clear_css(document: &Document) -> Result<(), JsValue> {
         for j in 0..lim_j {
             match css_style_sheet.delete_rule(j) {
                 Ok(()) => (),
-                Err(err) => print_to_console_s(format!(
+                Err(err) => print_to_console(format!(
                     "Cannot delete rule {j} of {lim_j}: {}:{}",
                     err.as_string().unwrap_or("<UNKNOWN>".to_string()),
                     err.js_typeof().as_string().unwrap_or("".to_string()),

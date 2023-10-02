@@ -14,7 +14,7 @@ use crate::set_page::set_focus_on_element;
 use crate::set_page::set_status;
 use crate::set_page::update_cost_display;
 #[allow(unused_imports)]
-use crate::utility::{print_to_console, print_to_console_s};
+use crate::utility::print_to_console;
 use gloo_events::EventListener;
 use llm_web_common::communication::ChatPrompt;
 use llm_web_common::communication::ChatResponse;
@@ -33,8 +33,8 @@ use web_sys::{Event, XmlHttpRequest};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{
-    window, Document, Element, HtmlButtonElement, HtmlImageElement, HtmlInputElement,
-    HtmlOptionElement, HtmlSelectElement, HtmlSpanElement, HtmlTextAreaElement,
+    window, Document, Element, HtmlButtonElement, HtmlElement, HtmlImageElement, HtmlInputElement,
+    HtmlOptionElement, HtmlSelectElement, HtmlSpanElement, HtmlTextAreaElement, MouseEvent,
 };
 
 /// Hold the code for creating and manipulating the chat_div
@@ -324,7 +324,7 @@ impl LlmWebPage for ChatDiv {
         add_css_rule(document, ".meta_div", "display", "flex")?;
         add_css_rule(document, ".meta_div", "flex-direction", "column")?;
         add_css_rule(document, ".meta_div", "justify-content", "end")?;
-        //
+
         add_css_rule(document, ".response_li", "align-items", "stretch")?;
         add_css_rule(document, ".prune_button", "align-self", "flex-start")?;
         add_css_rule(document, ".pr_div", "width", "80%")?;
@@ -410,13 +410,23 @@ impl Conversation {
 
             let prompt_count = prompt.len();
             let response_count = prompt_response.1.response.len();
-            let count_span = document
+
+            let prompt_count_span = document
                 .create_element("span")?
                 .dyn_into::<HtmlSpanElement>()?;
-            count_span.set_inner_text(
-                format!("Prompt/Response {prompt_count}/{response_count}").as_str(),
-            );
-            meta_div.append_child(&count_span)?;
+            prompt_count_span.set_inner_text(format!("{prompt_count}").as_str());
+            prompt_count_span.set_id("prompt_count_span");
+            prompt_count_span.set_class_name("prompt_count_span");
+
+            let response_count_span = document
+                .create_element("span")?
+                .dyn_into::<HtmlSpanElement>()?;
+            response_count_span.set_inner_text(format!("{response_count}").as_str());
+            response_count_span.set_id("response_count_span");
+            response_count_span.set_class_name("response_count_span");
+
+            meta_div.append_child(&prompt_count_span)?;
+            meta_div.append_child(&response_count_span)?;
             meta_div.append_child(&cost)?;
             meta_div.append_child(&model_span)?;
             meta_div.append_child(&prune_button)?;
@@ -513,7 +523,7 @@ impl Chats {
 
     fn delete_conversation(&mut self, key: usize) {
         if self.conversations.remove(&key).is_none() {
-            print_to_console_s(format!(
+            print_to_console(format!(
                 "Chats::delete conversation: Key {key} does not exist"
             ));
         }
@@ -632,7 +642,7 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
     match chats.try_borrow_mut() {
         Err(err) => {
             let result = format!("Failed to borrow chats making a new conversation: {err}");
-            print_to_console_s(result);
+            print_to_console(result);
             panic![];
             //return Err(JsValue::from_str(result.as_str()));
         }
@@ -718,7 +728,7 @@ fn set_current_conversation(chats: Rc<RefCell<Chats>>, key: usize) {
         match chats.set_current_conversation(key) {
             Ok(()) => (),
             Err(err) => {
-                print_to_console_s(format!(
+                print_to_console(format!(
                     "Failed to set current conversation to: {key}. Er: {err:?}"
                 ));
                 panic![];
@@ -736,13 +746,13 @@ fn process_chat_response(
     chats: Rc<RefCell<Chats>>,
     conversation_key: usize,
 ) -> Result<(), JsValue> {
-    // print_to_console_s(format!("process_chat_request 1: {chat_response:?}"));
+    // print_to_console(format!("process_chat_request 1: {chat_response:?}"));
 
     // Check if conversation has been deleted while the LLM was working
     if !match chats.try_borrow() {
         Ok(chats_ref) => chats_ref.conversation_exists(conversation_key),
         Err(err) => {
-            print_to_console_s(format!(
+            print_to_console(format!(
                 "Failed to borrow chats `process_chat_response`: {err:?}"
             ));
             panic![];
@@ -769,7 +779,7 @@ fn process_chat_response(
 
     match chats.try_borrow_mut() {
         Err(err) => {
-            print_to_console_s(format!(
+            print_to_console(format!(
                 "Failed to borrow chats `process_chat_response`: {err:?}"
             ));
             panic![];
@@ -899,7 +909,7 @@ fn select_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
                 Ok(mut chats) => match chats.set_current_conversation(key) {
                     Ok(()) => (),
                     Err(_err) => {
-                        print_to_console_s(format!("Failed to set current conversation to: {key}"));
+                        print_to_console(format!("Failed to set current conversation to: {key}"));
                         panic![];
                     }
                 },
@@ -915,12 +925,12 @@ fn select_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
                     let conv = chats_ref.conversations.get(&key).unwrap();
                     update_response_screen(conv, chats.clone());
                 }
-                Err(err) => print_to_console_s(format!(
+                Err(err) => print_to_console(format!(
                     "select_conversation_cb: Failed to clone chats: {err:?}"
                 )),
             }
         }
-        Err(err) => print_to_console_s(format!("Cannot parse id: {id}. Error: {err:?}")),
+        Err(err) => print_to_console(format!("Cannot parse id: {id}. Error: {err:?}")),
     };
 
     //....
@@ -940,12 +950,12 @@ fn new_conversation_cb(chats: Rc<RefCell<Chats>>) {
                         chats.clone(),
                     );
                 }
-                Err(err) => print_to_console_s(format!(
+                Err(err) => print_to_console(format!(
                     "new_conversation_callback: Failed to clone chats: {err:?}"
                 )),
             }
         }
-        Err(err) => print_to_console_s(format!("Failed to make new conversation: {err:?}")),
+        Err(err) => print_to_console(format!("Failed to make new conversation: {err:?}")),
     }
     remake_side_panel(chats.clone());
 }
@@ -961,7 +971,7 @@ fn style_experiment_cb() {
         .unwrap();
     match clear_css(&document) {
         Ok(()) => (),
-        Err(err) => print_to_console_s(format!(
+        Err(err) => print_to_console(format!(
             "Failed clear_css {}:{}",
             err.as_string().unwrap_or("<UNKNOWN>".to_string()),
             err.js_typeof().as_string().unwrap_or("".to_string()),
@@ -978,15 +988,15 @@ fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
 
     // Get the ID off the clicked radio button
     let id = target_element.id();
-    print_to_console_s(format!("cancel_cb 1.3 id: {id}"));
+    print_to_console(format!("cancel_cb 1.3 id: {id}"));
     let id = id.as_str();
-    print_to_console_s(format!("cancel_cb 1.4 id: {id}"));
+    print_to_console(format!("cancel_cb 1.4 id: {id}"));
     let id = &id["cancel_request_".len()..];
-    print_to_console_s(format!("cancel_cb 1.5 id: {id}"));
+    print_to_console(format!("cancel_cb 1.5 id: {id}"));
     let id = match id.parse::<usize>() {
         Ok(id) => id,
         Err(_err) => {
-            print_to_console_s(format!("cancel_cb cannot parse id from event: {event:?}"));
+            print_to_console(format!("cancel_cb cannot parse id from event: {event:?}"));
             return;
         }
     };
@@ -996,12 +1006,12 @@ fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
             match m_chats.get_conversation(&id) {
                 Some(cc) => match &cc.request {
                     Some(xhr) => {
-                        print_to_console_s(format!("cancel_cb 1.6 id: {id}"));
+                        print_to_console(format!("cancel_cb 1.6 id: {id}"));
                         xhr.abort().unwrap();
-                        print_to_console_s(format!("cancel_cb 1.7 id: {id}"));
+                        print_to_console(format!("cancel_cb 1.7 id: {id}"));
                         if let Some(cc) = m_chats.get_conversation_mut(&id) {
                             cc.prompt = None;
-                            print_to_console_s(format!("cancel_cb 1.7 id: {id}"));
+                            print_to_console(format!("cancel_cb 1.7 id: {id}"));
                             cc.request = None;
                         } else {
                             print_to_console("Cannot get current conversation for abort");
@@ -1013,7 +1023,7 @@ fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
             };
         }
         Err(err) => {
-            print_to_console_s(format!(
+            print_to_console(format!(
                 "Failed to borrow chats `make_conversation_list` {err:?}"
             ));
             panic![];
@@ -1033,7 +1043,7 @@ fn delete_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
     let id = id.as_str();
     let id = &id["delete_conversation_".len()..];
     match id.parse::<usize>() {
-        Err(err) => print_to_console_s(format!(
+        Err(err) => print_to_console(format!(
             "Cannot parse {id} setting up delete conversation button: Error: {err}"
         )),
         Ok(key) => {
@@ -1119,7 +1129,7 @@ fn send_prompt(prompt: String, chats: Rc<RefCell<Chats>>) {
     .unwrap();
     match chats.try_borrow_mut() {
         Err(err) => {
-            print_to_console_s(format!("Failed to borrow chats `chat_submit_cb`: {err:?}"));
+            print_to_console(format!("Failed to borrow chats `chat_submit_cb`: {err:?}"));
             panic![];
         }
         Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
@@ -1197,7 +1207,7 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
     // .unwrap();
     // match chats.try_borrow_mut() {
     //     Err(err) => {
-    //         print_to_console_s(format!("Failed to borrow chats `chat_submit_cb`: {err:?}"));
+    //         print_to_console(format!("Failed to borrow chats `chat_submit_cb`: {err:?}"));
     //         panic![];
     //     }
     //     Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
@@ -1247,7 +1257,7 @@ fn enable_prompt_div() -> Result<(), JsValue> {
 /// conversation is active the #prompt_input has the active prompt in
 /// it, the whole thing is greyed out and inactive.
 fn prompt_div_active_query(prompt: &str) -> Result<(), JsValue> {
-    // print_to_console_s(format!("prompt_div_active_query({prompt}) 1"));
+    // print_to_console(format!("prompt_div_active_query({prompt}) 1"));
     let document = get_doc();
     // Set the prompt in #prompt_input
     let prompt_input = document
@@ -1303,7 +1313,7 @@ fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> 
 
     match chats.try_borrow_mut() {
         Err(err) => {
-            print_to_console_s(format!("Failed to borrow chats `build_messages` {err:?}"));
+            print_to_console(format!("Failed to borrow chats `build_messages` {err:?}"));
             panic![];
         }
         Ok(mut chats) => {
@@ -1349,7 +1359,7 @@ fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> 
 fn remake_side_panel(chats: Rc<RefCell<Chats>>) {
     match _remake_side_panel(chats) {
         Ok(_) => (),
-        Err(err) => print_to_console_s(format!("Failed to remake the side panel. Err: {err:?}")),
+        Err(err) => print_to_console(format!("Failed to remake the side panel. Err: {err:?}")),
     }
 }
 fn _remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
@@ -1662,5 +1672,5 @@ fn set_model(new_model: &str) {
         }
     }
     // Get to here and there has been an error.
-    print_to_console_s(format!("set_model({new_model}) failed"));
+    print_to_console(format!("set_model({new_model}) failed"));
 }

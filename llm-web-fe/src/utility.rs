@@ -4,10 +4,11 @@ use wasm_bindgen::prelude::*;
 use web_sys::console;
 
 #[wasm_bindgen]
-pub fn print_to_console(message: &str) {
+pub fn _print_to_console(message: &str) {
     console::log_1(&message.into());
 }
-#[wasm_bindgen]
-pub fn print_to_console_s(message: String) {
-    console::log_1(&message.into());
+
+pub fn print_to_console<T: Into<String>>(message: T) {
+    let message = message.into();
+    _print_to_console(message.as_str());
 }

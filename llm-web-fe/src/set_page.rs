@@ -4,7 +4,7 @@ use crate::llm_webpage::LlmWebPage;
 use crate::login_div::LoginDiv;
 use crate::manipulate_css::add_css_rule;
 #[allow(unused_imports)]
-use crate::utility::{print_to_console, print_to_console_s};
+use crate::utility::print_to_console;
 use wasm_bindgen::prelude::*;
 use web_sys::{window, HtmlButtonElement};
 use web_sys::{Document, HtmlElement};
@@ -46,7 +46,7 @@ pub fn set_status(status: &str) {
     if let Some(status_element) = document.get_element_by_id("status_div") {
         status_element.set_inner_html(status);
     } else {
-        print_to_console_s(format!("Status (No status-div): {status}"));
+        print_to_console(format!("Status (No status-div): {status}"));
     }
 }
 
@@ -58,12 +58,12 @@ pub fn set_focus_on_element(element_id: &str) {
         if let Some(input) = element.dyn_ref::<HtmlElement>() {
             input.focus().unwrap();
         } else {
-            print_to_console_s(format!(
+            print_to_console(format!(
                 "Failed to set focus. Found {element_id} but is not a HtmlElement.  {element:?}"
             ));
         }
     } else {
-        print_to_console_s(format!(
+        print_to_console(format!(
             "Failed to set focus.  Could not find: {element_id}"
         ));
     }

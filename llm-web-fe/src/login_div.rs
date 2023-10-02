@@ -7,7 +7,7 @@ use crate::set_page::set_status;
 use crate::set_page::update_cost_display;
 use crate::set_page::Pages;
 #[allow(unused_imports)]
-use crate::utility::{print_to_console, print_to_console_s};
+use crate::utility::print_to_console;
 use gloo_events::EventListener;
 use llm_web_common::communication::CommType;
 use llm_web_common::communication::LoginRequest;
@@ -34,8 +34,8 @@ impl LlmWebPage for LoginDiv {
         let (username_input, password_input) = username_password_elements()?;
 
         // Hack so logging in quicker
-        username_input.set_attribute("value", "a")?;
-        password_input.set_attribute("value", "b")?;
+        // username_input.set_attribute("value", "a")?;
+        // password_input.set_attribute("value", "b")?;
 
         // Login button
         let user_text_submit = document.create_element("button")?;

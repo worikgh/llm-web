@@ -1,6 +1,6 @@
 /// Make a XmlHttpRequest to the backend.  
 #[allow(unused_imports)]
-use crate::utility::{print_to_console, print_to_console_s};
+use crate::utility::print_to_console;
 use llm_web_common::communication::{CommType, Message};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -20,12 +20,12 @@ pub fn make_request(
     mut callback_onload: impl FnMut(Message) + 'static,
     callback_onabort: impl FnMut() + 'static,
 ) -> Result<XmlHttpRequest, JsValue> {
-    // print_to_console_s(format!("make_request 1"));
+    // print_to_console(format!("make_request 1"));
     let api = match message.comm_type {
         CommType::LoginRequest => "login",
         CommType::ChatPrompt => "chat",
         _ => {
-            print_to_console_s(format!("make_request Unimplemented: {message}"));
+            print_to_console(format!("make_request Unimplemented: {message}"));
             let err = format!(
                 "`make_request` called for {} which is unimplemented",
                 message.comm_type

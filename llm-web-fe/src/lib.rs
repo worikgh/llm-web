@@ -1,6 +1,6 @@
 //! Webapp front end for accessing large language models.
 #[allow(unused_imports)]
-use crate::utility::{print_to_console, print_to_console_s};
+use crate::utility::print_to_console;
 use set_page::initialise_page;
 use set_page::set_page;
 use set_page::Pages;

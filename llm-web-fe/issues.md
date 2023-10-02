@@ -8,7 +8,9 @@
 * Popup/tool-tip type thing
 * Button to copy a response to the clipboard
 * A button to copy a conversation to the clipboard
+* Display  who is logged in on screen
 
 # BUG(s)
 
 * The left hand panel, for metadata, in the response screen is too wide.  Should word wrap the model name
+
