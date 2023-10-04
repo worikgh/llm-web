@@ -160,9 +160,9 @@ pub fn initialise_page() -> Result<(), JsValue> {
 }
 
 /// Update the cost display
-pub fn update_cost_display(document: &Document, credit: f64, this_cost: f64) {
+pub fn update_cost_display(document: &Document, credit: f64) {
     let cost_div = document.get_element_by_id("cost_div").unwrap();
-    let cost_string = format!("Last Prompt: {this_cost:.4}\u{00A2} Credit: {credit:.2}\u{00A2}");
+    let cost_string = format!("Credit: {credit:.2}\u{00A2}");
     cost_div.set_inner_html(cost_string.as_str());
 }
 

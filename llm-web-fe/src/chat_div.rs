@@ -806,7 +806,7 @@ fn process_chat_response(
         }
     };
 
-    update_cost_display(&document, credit, this_cost);
+    update_cost_display(&document, credit);
 
     Ok(())
 }

@@ -16,7 +16,7 @@ use llm_web_common::communication::Message;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use web_sys::XmlHttpRequest;
-use web_sys::{window, Document, Element, HtmlInputElement};
+use web_sys::{Document, Element, HtmlInputElement};
 pub struct LoginDiv;
 impl LlmWebPage for LoginDiv {
     ///  The login screen
@@ -92,19 +92,25 @@ impl LlmWebPage for LoginDiv {
 }
 
 pub fn do_login(username: String, password: String) -> Result<XmlHttpRequest, JsValue> {
-    let login_request = LoginRequest { username, password };
+    let login_request = LoginRequest {
+        username: username.clone(),
+        password,
+    };
     let login_message = Message::from(login_request);
-    make_request(login_message, login_cb, || ())
+    let u = username.clone();
+    make_request(
+        login_message,
+        move |msg: Message| login_cb(msg, u.clone()),
+        || (),
+    )
 }
 
-fn login_cb(msg: Message) {
+fn login_cb(msg: Message, username: String) {
     {
         match msg.comm_type {
             CommType::LoginResponse => {
                 let lr: LoginResponse = serde_json::from_str(msg.object.as_str()).unwrap();
-                let document = window()
-                    .and_then(|win| win.document())
-                    .expect("Failed to get document");
+                let document = get_doc();
                 if lr.success {
                     // Store token
                     let token = lr.token.unwrap();
@@ -112,8 +118,10 @@ fn login_cb(msg: Message) {
 
                     let head = document.body().unwrap();
                     head.set_attribute("data.token", token.as_str()).unwrap();
+                    head.set_attribute("data.username", username.as_str())
+                        .unwrap();
                     set_page(Pages::ChatDiv).unwrap();
-                    update_cost_display(&document, lr.credit, 0.0);
+                    update_cost_display(&document, lr.credit);
                 } else {
                     set_status("Login failed");
                     set_page(Pages::LoginDiv).unwrap();
