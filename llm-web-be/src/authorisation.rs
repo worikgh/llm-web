@@ -9,6 +9,7 @@ use serde::Serialize;
 use simple_crypt::decrypt;
 use simple_crypt::encrypt;
 use std::collections::HashMap;
+use std::fmt;
 use std::io;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -20,14 +21,18 @@ pub enum UserRights {
     Chat,
     Admin,
 }
-
-/// Get a list of usernames
-pub async fn users() -> io::Result<Vec<String>> {
-    Ok(get_user_records()
-        .await?
-        .iter()
-        .map(|x| x.username.clone())
-        .collect())
+impl fmt::Display for UserRights {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            UserRights::NoRights => f.write_str("NoRights"),
+            UserRights::Chat => f.write_str("Chat"),
+            UserRights::Admin => f.write_str("Admin"),
+        }
+    }
+}
+/// Get a list of user records
+pub async fn users() -> io::Result<Vec<AuthorisationRecord>> {
+    Ok(get_user_records().await?.to_vec())
 }
 
 /// Returned to caller on successful login
@@ -107,6 +112,15 @@ pub struct AuthorisationRecord {
     pub key: Vec<u8>,
 }
 
+impl fmt::Display for AuthorisationRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "username: {}\n\tlevel: {}\n\tcredit: {:0.3}\n",
+            self.username, self.level, self.credit,
+        )
+    }
+}
 /// Handle tokens.  Tokens are made from a uuid and session expiry
 /// time.  The uuid and expiry can be recovered.  (No use for that yet)
 pub fn generate_token(uuid: &Uuid, expiry: &DateTime<Utc>, key: &[u8]) -> String {
