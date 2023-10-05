@@ -56,11 +56,10 @@ pub async fn login(
 
     match records.iter().find(|&x| x.username == username) {
         Some(record) => {
-            eprintln!("login({username}, {password}) Found");
             // TODO: Is this forced unwrap OK?  What about perverse
-            // passwords?
+            // passwords?  Must sanatise passwords so cannot get
+            // control characters
             if verify(&password, &(record.password)).unwrap() {
-                eprintln!("login({username}, {password}) Verified");
                 // Successful login.
                 // Initialise session and a result
                 let expiry: DateTime<Utc> = Utc::now() + Duration::hours(6);
@@ -92,10 +91,7 @@ pub async fn login(
                 Ok(None)
             }
         }
-        None => {
-            eprintln!("login({username}, {password}) Not Found");
-            Ok(None)
-        }
+        None => Ok(None),
     }
 }
 
@@ -165,7 +161,7 @@ pub mod tests {
         let username = get_unique_user("authorisation::tests::test_login").await;
         let password = "123";
         let b: bool = add_user(username.as_str(), "123").await.unwrap();
-        eprintln!("`add_user` returns true{b}");
+
         assert!(b);
 
         // Test logging the user in
@@ -185,7 +181,6 @@ pub mod tests {
         let expiry: DateTime<Utc> = Utc::now() + Duration::hours(6);
         let key: Vec<u8> = vec![1, 2, 3, 4];
         let token = generate_token(&uuid, &expiry, &key);
-        println!("uuid:{uuid} expiry:{expiry}");
 
         match NaiveDateTime::parse_from_str(
             "2023-09-10 07:31:29.249939359 UTC",

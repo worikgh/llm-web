@@ -134,12 +134,11 @@ impl AppBackend {
 
     /// Log a user in, or not
     async fn process_login(&self, message: &Message) -> Message {
-        eprintln!("process_login(self, message: {message}) 1");
         match message.comm_type {
             CommType::LoginRequest => {
                 let login_request: LoginRequest =
                     serde_json::from_str(message.object.as_str()).unwrap();
-                eprintln!("process_login(self, message: {message}) 2");
+
                 let login_result_option: Option<LoginResult> = match login(
                     login_request.username,
                     login_request.password,
@@ -150,7 +149,7 @@ impl AppBackend {
                     Ok(lr) => lr,
                     Err(err) => panic!("{}", err),
                 };
-                eprintln!("Result: {:?}", login_result_option);
+
                 let lr = match login_result_option {
                     Some(lr) => {
                         let credit = self
@@ -193,7 +192,6 @@ impl AppBackend {
 
     /// Process a chat request from the front end
     async fn process_chat_request(&self, message: &Message) -> Message {
-        eprintln!("process_chat_request 1");
         if message.comm_type != CommType::ChatPrompt {
             let chat_response = InvalidRequest {
                 reason: format!("Invalid message tupe sent to `chat`: {}", message.comm_type),
@@ -204,11 +202,6 @@ impl AppBackend {
             };
         }
         let response: ChatResponse = {
-            eprintln!(
-                "process_chat_request 1.5: {}. {:?}",
-                message.comm_type, message.object
-            );
-
             // Forced unwrap OK because comm_type is ChatPrompt
             let prompt: ChatPrompt =
                 serde_json::from_str(&message.object).expect("Should be a ChatPrompt");
@@ -270,9 +263,9 @@ impl AppBackend {
             for (k, v) in chat_response.0.iter() {
                 result = format!("{result}{k} => {v}\n");
             }
-            eprintln!("process_chat_request 4");
 
             let cost = Self::cost(chat_response.1.usage, chat_response.1.model.as_str());
+
             let model = chat_response.1.model.clone();
             let response = chat_response.1.choices[0].message.content.clone();
             let mut session = self
@@ -284,6 +277,7 @@ impl AppBackend {
                 .clone();
 
             session.credit -= cost;
+
             let _ = update_user(&session).await;
 
             ChatResponse {
@@ -344,7 +338,7 @@ impl AppBackend {
                 *response.status_mut() = StatusCode::NOT_FOUND;
             }
         };
-        eprintln!("process_request response: {response:?}");
+
         Ok(response)
     }
 

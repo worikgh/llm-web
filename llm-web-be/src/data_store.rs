@@ -99,7 +99,6 @@ pub async fn delete_user(username: &str) -> io::Result<bool> {
 /// session tokens).  Return false if already in the system.  True
 /// otherwise
 pub async fn add_user(username: &str, password: &str) -> io::Result<bool> {
-    eprintln!("add_user({username}, {password})");
     // No white space in passwords
     let hashed_password = hash(password.trim(), DEFAULT_COST).unwrap();
     let rng = rand::thread_rng();
