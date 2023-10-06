@@ -1,7 +1,27 @@
 # Interact With Large Language Models
 
+A web app for interacting with Large Language Models (LLMs)
 
-This is only interacting with  [OpenAI's language models](https://api.openai.com/v1/)
+The web app only LLM it works with is OpenAI, and it only implements chat, currently.
+
+It is alpha software that I use every day.  It has many rough corners.
+
+<style>
+  .image-container {
+    float: left;
+    margin: 0 10px 10px 0; /* Adjust the margin to your preference */
+  }
+</style>
+
+<div class="image-container">
+  <img src="image-url" alt="Alt Text" style="height: 20vh;">
+</div>
+
+## Installing
+
+The page that hosts the web app requires serving from a webserver.  The webserver will proxy requests to a local server that marshalls them to the LLM (OpenAI in this case).  I use Lighttpd (lightty)
+
+
 
 ## `llm-web` Web Front End / Back End
 

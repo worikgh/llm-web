@@ -137,7 +137,7 @@ impl ApiInterface {
             )))
         } else {
             let fir: FileInfoResponse = response.json()?;
-            let datetime = NaiveDateTime::from_timestamp_opt(fir.created_at as i64, 0).unwrap();
+            let datetime = NaiveDateTime::from_timestamp_opt(fir.created_at, 0).unwrap();
             let datetime_utc = Utc.from_utc_datetime(&datetime);
 
             let datetime_string = datetime_utc.format("%Y-%m-%d %H:%M:%S").to_string();
