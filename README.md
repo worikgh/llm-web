@@ -14,7 +14,7 @@ It is alpha software that I use every day.  It has many rough corners.
 </style>
 
 <div class="image-container">
-  <img src="image-url" alt="Alt Text" style="height: 20vh;">
+  <img src="screenshot.png" alt="Alt Text" style="height: 20vh;">
 </div>
 
 ## Installing
