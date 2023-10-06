@@ -6,7 +6,7 @@ The web app only LLM it works with is OpenAI, and it only implements chat, curre
 
 It is alpha software that I use every day.  It has many rough corners.
 
- <img src="screenshot.png" alt="Screen shot" style="height: 20vh; float: left; margin-right: 10px;">
+ <img src="screenshot.png" alt="Screen shot" style="height: 35vh; float: left; margin-right: 4px;">
 
 ## Installing
 
