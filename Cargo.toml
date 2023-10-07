@@ -1,0 +1,7 @@
+[workspace]
+members = [
+"llm-web-fe",
+"llm-web-common",
+"llm-web-be",
+"llm-rs",
+]
