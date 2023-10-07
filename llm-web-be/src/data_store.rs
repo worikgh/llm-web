@@ -1,6 +1,6 @@
 /// The user data
 use crate::authorisation::UserRights;
-use crate::session::Session;
+//use crate::session::Session;
 // use std::fs::File;
 // use std::io;
 // use std::io::SeekFrom;
@@ -35,6 +35,7 @@ const FILENAME: &str = "users.txt";
 /// returns a opened, read/write locked file handle.
 /// This is very simple.  
 fn get_locked_handle() -> io::Result<File> {
+    eprintln!("Get locked file");
     let file = match OpenOptions::new()
         .write(true)
         .read(true)
@@ -55,6 +56,7 @@ fn get_locked_handle() -> io::Result<File> {
 pub async fn delete_user(username: &str) -> io::Result<bool> {
     let username = username.to_string();
     tokio::task::spawn_blocking(move || -> io::Result<bool> {
+        eprintln!("Get locked file 1");
         let mut file: File = get_locked_handle()?;
         file.seek(SeekFrom::Start(0))?;
 
@@ -120,6 +122,7 @@ pub async fn add_user(username: &str, password: &str) -> io::Result<bool> {
     };
 
     tokio::task::spawn_blocking(move || -> io::Result<bool> {
+        eprintln!("Get locked file 2");
         let mut file = get_locked_handle()?;
         file.seek(SeekFrom::Start(0))?;
         let lines = BufReader::new(&file).lines();
@@ -159,6 +162,7 @@ pub async fn add_user(username: &str, password: &str) -> io::Result<bool> {
 
 /// Get all the authorisation records for a read only purpose
 pub async fn get_user_records() -> io::Result<Vec<AuthorisationRecord>> {
+    eprintln!("Get locked file 3");
     let mut file: File = get_locked_handle()?;
     let mut s = String::new();
     file.seek(SeekFrom::Start(0))?;
@@ -191,10 +195,9 @@ pub async fn get_user(uuid: Uuid) -> io::Result<AuthorisationRecord> {
 /// Save the user data out of a Session  
 /// Precondition: User identified by `session` must exist
 #[allow(unused)]
-pub async fn update_user(session: &Session) -> io::Result<()> {
-    let session = session.clone();
-    let uuid = session.uuid;
+pub async fn update_user(uuid: Uuid, credit: f64, level: UserRights) -> io::Result<()> {
     tokio::task::spawn_blocking(move || -> io::Result<()> {
+        eprintln!("Get locked file 4");
         let mut file = get_locked_handle()?;
         let lines = BufReader::new(&file).lines();
         let mut contents = String::new();
@@ -204,7 +207,7 @@ pub async fn update_user(session: &Session) -> io::Result<()> {
 
         let mut records: Vec<AuthorisationRecord> = if contents.is_empty() {
             // No users yet
-            panic!("update_user({:?}): No users", session);
+            panic!("update_user(..): No users");
         } else {
             match serde_json::from_str(contents.as_str()) {
                 Ok(s) => s,
@@ -214,13 +217,10 @@ pub async fn update_user(session: &Session) -> io::Result<()> {
 
         match records.iter_mut().find(|a| a.uuid == uuid) {
             Some(r) => {
-                r.credit = session.credit;
-                r.level = session.level;
+                r.credit = credit;
+                r.level = level;
             }
-            None => panic!(
-                "update_user({:?}): User does not exist in database",
-                session
-            ),
+            None => panic!("update_user(..): User does not exist in database",),
         };
 
         let contents = serde_json::to_string(&records)?;
@@ -245,7 +245,7 @@ pub mod tests {
     }
     #[tokio::test]
     async fn test_user() {
-        use chrono::Utc;
+        //use chrono::Utc;
         let username = get_unique_user("test_user").await;
         assert!(!get_user_records()
             .await
@@ -269,14 +269,14 @@ pub mod tests {
         // Test updating a user
         let test_credit: f64 = 3.45;
         let test_level = UserRights::Admin;
-        let session = Session {
-            uuid,
-            expire: Utc::now(),
-            token: "Not part of test".to_string(),
-            credit: test_credit, // Testing this
-            level: test_level,   // Testing this
-        };
-        update_user(&session).await.unwrap();
+        // let session = Session {
+        //     uuid,
+        //     expire: Utc::now(),
+        //     token: "Not part of test".to_string(),
+        //     credit: test_credit, // Testing this
+        //     level: test_level,   // Testing this
+        // };
+        update_user(uuid, test_credit, test_level).await.unwrap();
         let auth_record = get_user(uuid).await.unwrap();
         assert!(uuid == auth_record.uuid);
         assert!(auth_record.level == test_level);

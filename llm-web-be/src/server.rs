@@ -2,9 +2,9 @@
 //! Certificate and private key are hardcoded to sample files.
 //! hyper will automatically use HTTP/2 if a client starts talking HTTP/2,
 //! otherwise HTTP/1.1 will be used.
-
 use crate::authorisation::login;
 use crate::authorisation::LoginResult;
+use crate::authorisation::UserRights;
 use crate::data_store::update_user;
 use crate::session::Session;
 use chrono::Utc;
@@ -32,6 +32,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 use std::{env, fs, io};
+use uuid::Uuid;
 
 fn _error(err: String) -> io::Error {
     io::Error::new(io::ErrorKind::Other, err)
@@ -59,12 +60,20 @@ impl AppBackend {
         };
         let addr = format!("127.0.0.1:{}", port).parse()?;
 
-        let data_server = AppBackend::new();
-        let data_server = Arc::new(data_server);
+        let app_backend = AppBackend::new();
+        let data_server = Arc::new(app_backend);
         let service = make_service_fn(move |_: _| {
             let data_server = Arc::clone(&data_server);
             async move {
                 Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
+                    eprintln!(
+                        "request: Credit {:?}",
+                        (*data_server.sessions.clone().lock().unwrap())
+                            .values()
+                            .map(|v| v.credit)
+                            .collect::<Vec<f64>>()
+                    );
+
                     let data_server = Arc::clone(&data_server);
                     async move { Ok::<_, Infallible>(data_server.process_request(req).await.unwrap()) }
                 }))
@@ -139,6 +148,7 @@ impl AppBackend {
                 let login_request: LoginRequest =
                     serde_json::from_str(message.object.as_str()).unwrap();
 
+                let user_name_dbg = login_request.username.clone();
                 let login_result_option: Option<LoginResult> = match login(
                     login_request.username,
                     login_request.password,
@@ -159,6 +169,7 @@ impl AppBackend {
                             .get(lr.token.as_str())
                             .unwrap()
                             .credit;
+                        eprintln!("Login Credit for: {}: {credit}", user_name_dbg);
                         LoginResponse {
                             success: true,
                             uuid: Some(lr.uuid),
@@ -268,26 +279,53 @@ impl AppBackend {
 
             let model = chat_response.1.model.clone();
             let response = chat_response.1.choices[0].message.content.clone();
-            let mut session = self
-                .sessions
-                .lock()
-                .unwrap()
-                .get_mut(token.as_str())
-                .unwrap()
-                .clone();
+            let credit: f64;
+            let uuid: Uuid;
+            let level: UserRights;
+            {
+                let mut session_ref = self.sessions.lock().unwrap();
+                let session_ref = (*session_ref).get_mut(token.as_str()).unwrap();
 
-            session.credit -= cost;
+                eprint!(
+                    "Process chat request: Cost: {cost} and Credit: {:0.4} ",
+                    session_ref.credit
+                );
+                session_ref.credit -= cost;
+                eprintln!("-> {:0.4}. ", session_ref.credit);
 
-            let _ = update_user(&session).await;
+                credit = session_ref.credit;
+                uuid = session_ref.uuid;
+                level = session_ref.level;
+            }
+            eprintln!(
+                "Second opinion: {}",
+                self.sessions
+                    .lock()
+                    .unwrap()
+                    .get(token.as_str())
+                    .unwrap()
+                    .credit
+            );
+            let _ = update_user(uuid, credit, level).await;
 
             ChatResponse {
                 model,
                 cost,
                 response,
-                credit: session.credit,
+                credit,
             }
         };
 
+        eprintln!(
+            "done processing: Credit {:?}",
+            (*self.sessions.clone().lock().unwrap())
+                .iter()
+                .map(|(k, v)| {
+                    let s: String = k[0..20].to_string();
+                    (s, v.credit)
+                })
+                .collect::<Vec<(String, f64)>>()
+        );
         Message {
             comm_type: CommType::ChatResponse,
             object: serde_json::to_string(&response).unwrap(),
@@ -318,6 +356,13 @@ impl AppBackend {
                 };
 
                 let return_message = self.process_chat_request(&message).await;
+                eprintln!(
+                    "processed: Credit {:?}",
+                    (*self.sessions.clone().lock().unwrap())
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.credit))
+                        .collect::<Vec<(String, f64)>>()
+                );
                 let s = serde_json::to_string(&return_message).unwrap();
 
                 *response.body_mut() = Body::from(s);

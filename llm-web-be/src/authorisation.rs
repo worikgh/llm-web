@@ -69,13 +69,7 @@ pub async fn login(
                 let level = record.level;
                 sessions.lock().unwrap().insert(
                     token.clone(),
-                    Session {
-                        uuid: record.uuid,
-                        expire: expiry,
-                        token: token.clone(),
-                        credit: record.credit,
-                        level,
-                    },
+                    Session::new(record.uuid, expiry, token.clone(), record.credit, level),
                 );
                 Ok(Some(LoginResult {
                     rights: record.level,
@@ -84,7 +78,7 @@ pub async fn login(
                 }))
             } else {
                 // Failed login.  Not an error
-                eprintln!(
+                println!(
                     "login({username}, {password}) Failed verify: {} ",
                     record.password
                 );
