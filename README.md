@@ -1,6 +1,6 @@
 # Interact With Large Language Models
 
-A web app for interacting with Large Language Models (LLMs)
+A web app for interacting with Large Language Models (LLMs). 
 
 The web app only LLM it works with is OpenAI, and it only implements chat, currently.
 
@@ -10,14 +10,65 @@ It is alpha software that I use every day.  It has many rough corners.
 
 ## Installing
 
-The page that hosts the web app requires serving from a webserver.  The webserver will proxy requests to a local server that marshalls them to the LLM (OpenAI in this case).  I use Lighttpd (lightty)
+* Install the latest rust tool chain with `rustup`.
+
+* Clone the git repository: `git clone https://github.com/worikgh/llm-web`
+
+* Install the Rust/Web Assembly tool chain: `cargo install wasm-pack`
+
+### Directory Structure
+
+```
+llm-web/
+├── llm-web-fe
+├── llm-web-be
+├── llm-web-common
+├── llm-rs
+```
+
+* `llm-web-fe` is a wasm web app front end that provides an HTML5 user interface 
+* `llm-web-be` is the back end that the web app talks to.  It authenticates the app, maintains user records, and proxies messages to LLMs via `llm-rs`.
+* `llm-web-common` has the code for sharing between the front end and the back end.
+* `llm-rs` contains the code to talk with LLM APIs.
+
+### Build the Software
+
+_I would like this to be: `cargo build --release` in the root but this is not yet a thing_
+
+There are two parts to the software that need to be built separately.
+
+1. The wasm web app loaded by the browser.  Build using the supplied script.  Change directory to  `llm-web/llm-web-fe` and run `./build.sh`.
+2. The back end that manages users and proxies the queries to and responses from the LLM.  Build the back end in `llm-web/llm-web-be` with `cargo build --release`
+
+### Serving the Web App
+
+Install a web server.  There is an [example configuration file](lighttpd.config) for  [`lighttpd`](https://www.lighttpd.net/). 
+
+Install TLS certificates.  Web Apps will only work with HTTPS so the server that serves the Web App must serve HTTPS, and so it must have certificates.  
+
+There are two approaches to this problem, that both wind up with documents that must be included from the web server configuration file.
+
+1. Use a certificate from a recognised authority, like [Let's Encrypt](https://letsencrypt.org/).  This has the advantage of "just working", and not requiring adjusting browser settings.  It does require a fully qualified domain name that is registered.
+
+2. Create a self signed certificate.  The instructions for doing this are [here](certs/README.md).  The disadvantage of doing this is that the public key must be manually installed in the browser running the web app.  This can be done using the browser's settings, or by OKing the security warnings on the first visit
+
+Start the web server.  For lighttpd, if configured using a high port, this is as simple as: `lighttpd -f lighttpd.config`
 
 
+### Configuring
 
-## `llm-web` Web Front End / Back End
+* Create a file for holding user data: `touch llm-web/users.txt`
+
+* There needs to be at least one user created.  So enter the back end' directory `llm-web/llm-web-be` and run `cargo run --release  -- add_user <username> <password>`
 
 
-A web app  [llm-rs](https://github.com/worikgh/llm-rs) to communicate with the LLM.  (Only OpenAI currently)
+### Starting 
+
+* Start up the back end by changing directory to `llm-web-be` and run `cargo run --release`
+
+<!-- The page that hosts the web app requires serving from a web server.  The web server will proxy requests to a local server that marshals them to the LLM (OpenAI in this case).  There is a  Lighttpd (lightty) server configuration file included. -->
+
+
 
 
 ## The Command Line Interface `llm-rs/cli`
@@ -50,9 +101,6 @@ Generally text entered is sent to the LLM.
 
 Text that starts with "! " is a command to the system.  
 
-## Command Line Interface
-
-There is a [cli](https://github.com/worikgh/llm-rs/blob/mistress/src/bin/cli.rs) to flex the API.
 
 ### List of Meta Commands
 

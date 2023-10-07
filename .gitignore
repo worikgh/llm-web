@@ -30,20 +30,9 @@ TestAudio.ogg
 compiled_results.csv
 consise
 error
-examples/Energy.txt
-examples/GuardianArticle.txt
-examples/article_1.txt
-examples/code1
-examples/conversation.txt
-examples/rust_wasm.txt
-examples/rust_wasm.txt~
-examples/rust_wasm_clean.txt
-one Be consice
-src/fine_tune.json
-static network rasperry pi
-sx1
-test.auio
-test1 Be consice
-test2
-test3
 
+
+# Ignore certificate data
+certs/certificate.pem
+certs/private4096.key
+certs/public.crt

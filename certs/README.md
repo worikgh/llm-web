@@ -31,7 +31,7 @@ There is no need to enter anything but defaults.
 
 If this CSR is to be sent to a Root CA for signing, and then is to be accepted by browsers it is important to add x509 extensions, specifically an `Alternative Name` section with a `DNS` entry for the URL of the server to be protected.
 
-## Generating the Self-Signed Certificate
+## Generating the Public Key
 
 The "self-signed" certificate is signed with the server's private key, as opposed to one signed with a Root CA's private key.
 
@@ -42,5 +42,14 @@ We do not need the `CSR` to do this:
 * `req` Creating, or inspecting a certificate or a certificate signing request
 * `-new`  Generating a new certificate or request
 * `-x509` Output a self-signed certificate (not a request)
-* `-days 3650` How long the certificate is valid for.  (Some domains, particularly Apple, have limts on this) 
+* `-days 3650` How long the certificate is valid for.  (Some domains, particularly Apple, have limits on this) 
 * `-out public.crt` Output file
+
+## Generating the Self-Signed Certificate
+
+The certificate is a PEM (Privacy Enhanced Mail) document and is created from the public and private key above:
+
+`cat private4096.key > certificate.pem`
+`cat public.crt >> certificate.pem`
+
+The file `certificate.pem` can be used by the web server to authenticate an HTTPS session.  Because it is self signed the public key needs to be installed on the browser, which will happen on the first visit if the user authorises it.

@@ -2,7 +2,7 @@
 name = "llm_web_be"
 version = "0.1.0"
 authors = ["Worik <root@worik.org>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 aes = "0.8.3"
