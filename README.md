@@ -2,7 +2,7 @@
 
 A web app for interacting with Large Language Models (LLMs). 
 
-The web app only LLM it works with is OpenAI, and it only implements chat, currently.
+The only LLM this web app  works with is OpenAI, and it only implements chat, currently.
 
 It is alpha software that I use every day.  It has many rough corners.
 
@@ -42,7 +42,7 @@ There are two parts to the software that need to be built separately.
 
 ### Serving the Web App
 
-Install a web server.  There is an [example configuration file](lighttpd.config) for  [`lighttpd`](https://www.lighttpd.net/). 
+Install a web server.  There is an [example configuration file](lighttpd.config) for  [`lighttpd`](https://www.lighttpd.net/). It uses `env.PWD` to find configuration files, which will work OK when started from the ommand line like this
 
 Install TLS certificates.  Web Apps will only work with HTTPS so the server that serves the Web App must serve HTTPS, and so it must have certificates.  
 
