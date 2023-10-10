@@ -36,3 +36,5 @@ error
 certs/certificate.pem
 certs/private4096.key
 certs/public.crt
+certs/certificate.csr
+
