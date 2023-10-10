@@ -33,8 +33,6 @@ llm-web/
 
 ### Build the Software
 
-_I would like this to be: `cargo build --release` in the root but this is not yet a thing_
-
 There are two parts to the software that need to be built separately.
 
 1. The wasm web app loaded by the browser.  Build using the supplied script.  Change directory to  `llm-web/llm-web-fe` and run `./build.sh`.
@@ -42,13 +40,13 @@ There are two parts to the software that need to be built separately.
 
 ### Serving the Web App
 
-Install a web server.  There is an [example configuration file](lighttpd.config) for  [`lighttpd`](https://www.lighttpd.net/). It uses `env.PWD` to find configuration files, which will work OK when started from the ommand line like this
+Install a web server.  There is an [example configuration file](lighttpd.config) for  [`lighttpd`](https://www.lighttpd.net/). It uses `env.PWD` to find configuration files, which will work OK when started from the command line like this
 
 Install TLS certificates.  Web Apps will only work with HTTPS so the server that serves the Web App must serve HTTPS, and so it must have certificates.  
 
 There are two approaches to this problem, that both wind up with documents that must be included from the web server configuration file.
 
-1. Use a certificate from a recognised authority, like [Let's Encrypt](https://letsencrypt.org/).  This has the advantage of "just working", and not requiring adjusting browser settings.  It does require a fully qualified domain name that is registered.
+1. Use a certificate from a recognised authority, like [Let's Encrypt](https://letsencrypt.org/).  This has the advantage of "just working", and not requiring adjusting browser settings.  It does require a fully qualified domain name with DNS records.
 
 2. Create a self signed certificate.  The instructions for doing this are [here](certs/README.md).  The disadvantage of doing this is that the public key must be manually installed in the browser running the web app.  This can be done using the browser's settings, or by OKing the security warnings on the first visit
 
@@ -57,19 +55,25 @@ Start the web server.  For lighttpd, if configured using a high port, this is as
 
 ### Configuring
 
-* Create a file for holding user data: `touch llm-web/users.txt`
+* Create a file for holding user data: `touch llm-web/llm-web-be/users.txt`
 
 * There needs to be at least one user created.  So enter the back end' directory `llm-web/llm-web-be` and run `cargo run --release  -- add_user <username> <password>`
 
 
 ### Starting 
 
+* Set the environment variable `OPENAI_API_KEY` to the value of your OpenAI API key.
+
 * Start up the back end by changing directory to `llm-web-be` and run `cargo run --release`
 
 <!-- The page that hosts the web app requires serving from a web server.  The web server will proxy requests to a local server that marshals them to the LLM (OpenAI in this case).  There is a  Lighttpd (lightty) server configuration file included. -->
 
+* In a browser navigate to the hosting website.  If this is all run on one computer with no changes to the defaults that is: https://localhost:8081/llm-web/fe
 
+* Log in 
 
+---
+---
 
 ## The Command Line Interface `llm-rs/cli`
 
