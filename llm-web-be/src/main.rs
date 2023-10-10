@@ -21,8 +21,7 @@ async fn main() {
     // There is always one argument
     let _programme_name = args.next().unwrap();
     if args.len() == 0 {
-        // No more args so serve an echo service over HTTPS, with
-        // proper error handling.
+        // No args means run server
         if let Err(e) = server::AppBackend::run_server().await {
             eprintln!("FAILED: {}", e);
             std::process::exit(1);
