@@ -230,9 +230,8 @@ impl AppBackend {
             }
 
             // Now processing a chat_request for a validated session
-
             // Need an API key for OpenAI
-            let api_key = env::var("OPENAI_API_KEY").unwrap();
+            let api_key = env::var("OPENAI_API_KEY").expect("No API Key found");
 
             // Put the conversation so far in here
             let messages: Vec<LLMMessage> = prompt.messages;

@@ -59,12 +59,15 @@ impl fmt::Display for CssRules {
 /// selectors and have a set of (property/value) pairs for each
 /// selector
 pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
+
     let mut result: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
 
     let style_sheets: StyleSheetList = document.style_sheets();
+
     for i in 0..style_sheets.length() {
         // For each style sheet.  Forced unwrap OK because `i` is
         // confined to a range
+
         let style_sheet: StyleSheet = style_sheets.get(i).unwrap();
         let css_style_sheet =
             match wasm_bindgen::JsCast::dyn_into::<web_sys::CssStyleSheet>(style_sheet) {
@@ -75,6 +78,12 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
                 }
             };
         // Got a CssStyleSheet
+        let href = css_style_sheet.href()?.unwrap_or("no title".to_string());
+        if href.contains("google_ads_iframe"){
+            // Wierd rules causing problems.  WHere do these come from?
+            continue;
+        }
+
         let css_rules: CssRuleList = css_style_sheet.css_rules()?;
         for j in 0..css_rules.length() {
             // Forced unrwap OK because `j` is in a range
@@ -90,6 +99,7 @@ pub fn get_css_rules(document: &Document) -> Result<CssRules, JsValue> {
 
             let selector = css_style_rule.selector_text();
             let scc_style_dec: CssStyleDeclaration = css_style_rule.style();
+
 
             // Make sure the rules are initialised
             if !result.contains_key(&selector) {
@@ -147,11 +157,13 @@ pub fn add_css_rule<T: Into<String>>(
 ) -> Result<(), JsValue> {
     let value: String = value.into();
     // Check if the style element already contains CSS rules
-    // print_to_console("add_css_rule 1");
+
 
     if let Some(rules) = get_css_rules(document)?.selector_rules.get(selector) {
         // The selector is registered
+
         if let Some(v) = rules.get(property) {
+
             // The property decralred for this rule
             if v == &value {
                 // Rule already there
@@ -165,6 +177,7 @@ pub fn add_css_rule<T: Into<String>>(
             }
         }
     }
+
     let style_element: HtmlStyleElement = get_style_element(document)?;
     let existing_css = style_element.inner_html();
     let css_rule = format!("{} {{ {}: {} }}\n", selector, property, value); //

@@ -72,7 +72,6 @@ pub fn set_focus_on_element(element_id: &str) {
 /// Set up the basic page with header, footer, and body
 #[allow(dead_code)]
 pub fn initialise_page() -> Result<(), JsValue> {
-    // print_to_console("initialise_page()");
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");

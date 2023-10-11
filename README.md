@@ -64,7 +64,7 @@ Start the web server.  For lighttpd, if configured using a high port, this is as
 
 * Set the environment variable `OPENAI_API_KEY` to the value of your OpenAI API key.
 
-* Start up the back end by changing directory to `llm-web-be` and run `cargo run --release`
+* Start up the back end by changing directory to `llm-web-be` and run `OPENAI_API_KEY=$OPENAI_API_KEY cargo run --release`
 
 <!-- The page that hosts the web app requires serving from a web server.  The web server will proxy requests to a local server that marshals them to the LLM (OpenAI in this case).  There is a  Lighttpd (lightty) server configuration file included. -->
 
