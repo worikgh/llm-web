@@ -13,6 +13,7 @@ use crate::set_page::new_button;
 use crate::set_page::set_focus_on_element;
 use crate::set_page::set_status;
 use crate::set_page::update_cost_display;
+use crate::set_page::update_user_display;
 #[allow(unused_imports)]
 use crate::utility::print_to_console;
 use gloo_events::EventListener;
@@ -774,9 +775,6 @@ fn process_chat_response(
     // A new round to be added to the current conversation
     //cas.update_current_conversation(chat_response)?;
 
-    // Get the cost
-    let this_cost = chat_response.cost;
-
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
@@ -807,7 +805,7 @@ fn process_chat_response(
     };
 
     update_cost_display(&document, credit);
-
+    update_user_display();
     Ok(())
 }
 
