@@ -5,6 +5,7 @@ use crate::set_page::get_doc;
 use crate::set_page::set_page;
 use crate::set_page::set_status;
 use crate::set_page::update_cost_display;
+use crate::set_page::update_user_display;
 use crate::set_page::Pages;
 #[allow(unused_imports)]
 use crate::utility::print_to_console;
@@ -122,6 +123,7 @@ fn login_cb(msg: Message, username: String) {
                         .unwrap();
                     set_page(Pages::ChatDiv).unwrap();
                     update_cost_display(&document, lr.credit);
+                    update_user_display();
                 } else {
                     set_status("Login failed");
                     set_page(Pages::LoginDiv).unwrap();

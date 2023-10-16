@@ -93,6 +93,11 @@ pub fn initialise_page() -> Result<(), JsValue> {
     cost_div.set_id("cost_div");
     header_div.append_child(&cost_div)?;
 
+    // Add a user area to display user
+    let user_div = document.create_element("div")?;
+    user_div.set_id("user_div");
+    header_div.append_child(&user_div)?;
+
     // Add a status area
     let status_div = document.create_element("div")?;
     status_div.set_id("status_div");
@@ -149,11 +154,15 @@ pub fn initialise_page() -> Result<(), JsValue> {
     )?;
     add_css_rule(&document, "#sidepanel", "border", "1px solid black")?;
     add_css_rule(&document, "#footer", "border", "1px solid black")?;
+
     add_css_rule(&document, "#header", "border", "1px solid black")?;
+    add_css_rule(&document, "#header", "background", "#f8eaea")?;
     add_css_rule(&document, "#main_body", "border", "1px solid black")?;
 
     add_css_rule(&document, "#cost_div", "float", "right")?;
     add_css_rule(&document, "#cost_div", "background-color", "#f2fbfa")?;
+    add_css_rule(&document, "#user_div", "float", "left")?;
+    add_css_rule(&document, "#user_div", "background", "#f9f2d1")?;
 
     Ok(())
 }
@@ -163,6 +172,15 @@ pub fn update_cost_display(document: &Document, credit: f64) {
     let cost_div = document.get_element_by_id("cost_div").unwrap();
     let cost_string = format!("Credit: {credit:.2}\u{00A2}");
     cost_div.set_inner_html(cost_string.as_str());
+}
+
+/// Update the user display
+pub fn update_user_display() {
+    let document = get_doc();
+    if let Some(t) = document.body().unwrap().get_attribute("data.username") {
+        let user_div = document.get_element_by_id("user_div").unwrap();
+        user_div.set_inner_html(t.as_str());
+    }
 }
 
 /// Make a button
