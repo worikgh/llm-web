@@ -117,7 +117,7 @@ impl LlmWebPage for ChatDiv {
         multi_line_button.set_title("Open multi line text");
         let cc = chats.clone();
         let open_multi_line_closure =
-            Closure::wrap(Box::new(move || open_multi_line_window(cc.clone())) as Box<dyn Fn()>);
+            Closure::wrap(Box::new(move || open_multi_line_window_cl(cc.clone())) as Box<dyn Fn()>);
         multi_line_button.set_onclick(Some(open_multi_line_closure.as_ref().unchecked_ref()));
         open_multi_line_closure.forget();
 
@@ -494,7 +494,7 @@ impl Chats {
             .expect("Failed to get document");
         if let Some(main_body) = document.get_element_by_id("main_body") {
             if let Some(self_str) = main_body.get_attribute("data-chat-div") {
-                // There is data in teh DOM to make a `Chats` object from.  Use it
+                // There is data in the DOM to make a `Chats` object from.  Use it
                 return serde_json::from_str(self_str.as_str())
                     .map_err(|err| wasm_bindgen::JsValue::from_str(&err.to_string()));
             }
@@ -508,50 +508,15 @@ impl Chats {
         })
     }
 
-    fn new_conversation_key(&self) -> usize {
-        // Generate a index for the conversation.  This will ensure
-        // there are usize::MAX conversations, ever, during the life
-        // time of this interface
-        match self.conversations.keys().len() {
-            0 => {
-                // Base case.  First name
-                0
-            }
-            _ => {
-                let indexes = self.conversations.keys().collect::<Vec<&usize>>();
-                // TODO There has to be a better way to get the maximum index already
-                let max = indexes.iter().fold(0, |a, b| if **b > a { **b } else { a });
-                max + 1
-            }
-        }
-    }
-
-    fn delete_conversation(&mut self, key: usize) {
-        if self.conversations.remove(&key).is_none() {
-            print_to_console(format!(
-                "Chats::delete conversation: Key {key} does not exist"
-            ));
-        }
-        if let Some(cc) = self.current_conversation {
-            if cc == key {
-                self.current_conversation = None;
-            }
-        }
-    }
-
-    // The current conversation is where the focus of the user is. It
-    // must be:
-    // * initialised when a conversation starts .
-    // * updated when a response received
-    // * References to read it
-    // * Reference to mutate it
+    /// The first message that gets built calls this.  Can this be
+    /// incorporated into `new`?
     fn initialise_current_conversation(&mut self) {
         let index = self.new_conversation_key();
         self.conversations.insert(index, Conversation::new(index));
         self.current_conversation = Some(index);
     }
 
-    /// Triggered by the radio buttons
+    /// Triggered by the radio buttons.  Chage the current conversation
     fn set_current_conversation(&mut self, cc: usize) -> Result<(), JsValue> {
         if self.conversations.get(&cc).is_some() {
             self.current_conversation = Some(cc);
@@ -559,36 +524,6 @@ impl Chats {
         } else {
             Err(JsValue::from_str("invalid conversation"))
         }
-    }
-
-    /// Update conversation when response received
-    /// Possibly never used
-    fn _update_current_conversation(&mut self, response: ChatResponse) -> Result<(), JsValue> {
-        // Preconditions:
-        // 1. There is a current conversation
-        // 2. The `prompt` is not None in current conversation
-        let conversation = self.get_current_conversation_mut().unwrap();
-        let prompt: String = conversation.prompt.as_ref().unwrap().clone();
-        conversation.prompt = None;
-        conversation.responses.push((prompt, response));
-        Ok(())
-    }
-
-    /// Update a conversation when response received
-    fn update_conversation(
-        &mut self,
-        response: ChatResponse,
-        conversation_key: usize,
-    ) -> Result<(), JsValue> {
-        // Preconditions:
-        // 1. There is a current conversation
-        // 2. The `prompt` is not None in current conversation
-        let conversation = self.get_conversation_mut(&conversation_key).unwrap();
-        // conversation.cost = conversation_cost;
-        let prompt: String = conversation.prompt.as_ref().unwrap().clone();
-        conversation.prompt = None;
-        conversation.responses.push((prompt, response));
-        Ok(())
     }
 
     /// Get the current conversation to read
@@ -609,6 +544,23 @@ impl Chats {
         }
     }
 
+    /// Update a conversation when response received
+    fn update_conversation(
+        &mut self,
+        response: ChatResponse,
+        conversation_key: usize,
+    ) -> Result<(), JsValue> {
+        // Preconditions:
+        // 1. There is a current conversation
+        // 2. The `prompt` is not None in current conversation
+        let conversation = self.get_conversation_mut(&conversation_key).unwrap();
+        // conversation.cost = conversation_cost;
+        let prompt: String = conversation.prompt.as_ref().unwrap().clone();
+        conversation.prompt = None;
+        conversation.responses.push((prompt, response));
+        Ok(())
+    }
+
     /// Get a conversation to mutate
     fn get_conversation_mut(&mut self, current_conversation: &usize) -> Option<&mut Conversation> {
         self.conversations.get_mut(current_conversation)
@@ -622,6 +574,29 @@ impl Chats {
     /// Check that a conversation exists
     fn conversation_exists(&self, key: usize) -> bool {
         self.conversations.get(&key).is_some()
+    }
+
+    fn delete_conversation(&mut self, key: usize) {
+        if self.conversations.remove(&key).is_none() {
+            print_to_console(format!(
+                "Chats::delete conversation: Key {key} does not exist"
+            ));
+        }
+        if let Some(cc) = self.current_conversation {
+            if cc == key {
+                self.current_conversation = None;
+            }
+        }
+    }
+
+    /// Return 1 + max(keys)
+    fn new_conversation_key(&self) -> usize {
+        // Generate a index for the conversation.  This will ensure
+        // there are usize::MAX conversations...
+        1 + match self.conversations.keys().max() {
+            Some(u_ref) => *u_ref,
+            None => 0,
+        }
     }
 }
 
@@ -642,7 +617,8 @@ impl Drop for Chats {
     }
 }
 
-/// Make a new conversation
+/// Make a new conversation in `chats`.  Called in response to user
+/// request (E.g. side-panel button)
 fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
     match chats.try_borrow_mut() {
         Err(err) => {
@@ -661,7 +637,7 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
 
 /// Open an area for entering multi line text for a prompt and
 /// submitting it
-fn open_multi_line_window(_chats: Rc<RefCell<Chats>>) {
+fn open_multi_line_window_cl(_chats: Rc<RefCell<Chats>>) {
     // print_to_console("open_multi_line_window 1");
     let document = get_doc();
     let multi_line_div = document.create_element("DIV").unwrap();
@@ -683,7 +659,7 @@ fn open_multi_line_window(_chats: Rc<RefCell<Chats>>) {
         .dyn_into::<HtmlButtonElement>()
         .unwrap();
     cancel_button.set_inner_text("Cancel");
-    let cancel_closure = Closure::wrap(Box::new(close_multi_line_window) as Box<dyn Fn()>);
+    let cancel_closure = Closure::wrap(Box::new(close_multi_line_window_cl) as Box<dyn Fn()>);
     cancel_button.set_onclick(Some(cancel_closure.as_ref().unchecked_ref()));
     cancel_closure.forget();
     multi_line_div.append_child(&cancel_button).unwrap();
@@ -697,7 +673,7 @@ fn open_multi_line_window(_chats: Rc<RefCell<Chats>>) {
     let cc = _chats.clone();
     let submit_closure = Closure::wrap(Box::new(move || {
         submit_multi_line_window_cb(cc.clone());
-        close_multi_line_window()
+        close_multi_line_window_cl()
     }) as Box<dyn Fn()>);
     submit_button.set_onclick(Some(submit_closure.as_ref().unchecked_ref()));
     submit_closure.forget();
@@ -706,6 +682,7 @@ fn open_multi_line_window(_chats: Rc<RefCell<Chats>>) {
     let chat_div = document.get_element_by_id("chat_div").unwrap();
     chat_div.append_child(&multi_line_div).unwrap();
 }
+/// Submit button in multi line window
 fn submit_multi_line_window_cb(chats: Rc<RefCell<Chats>>) {
     let document = get_doc();
     let prompt: String = document
@@ -717,7 +694,8 @@ fn submit_multi_line_window_cb(chats: Rc<RefCell<Chats>>) {
     send_prompt(prompt, chats.clone());
     remake_side_panel(chats.clone());
 }
-fn close_multi_line_window() {
+/// Close multi line window
+fn close_multi_line_window_cl() {
     let document = get_doc();
     let chat_div = document.get_element_by_id("chat_div").unwrap();
     if let Some(multi_line_div) = document.get_element_by_id("multi_line_div") {
@@ -1287,7 +1265,7 @@ fn prompt_div_inactive_query() -> Result<(), JsValue> {
         prompt_input.set_attribute("value", "")?;
         let prompt_input = prompt_input
             .dyn_into::<HtmlInputElement>()
-            .map_err(|_err| JsValue::from_str("prompt_div_active_query: Failed to cast element"))?;
+            .map_err(|_err| JsValue::from_str("Failed to cast element"))?;
         prompt_input.set_value("");
         let chat_submit = document
             .get_element_by_id("chat_submit")
@@ -1361,7 +1339,10 @@ fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> 
 fn remake_side_panel(chats: Rc<RefCell<Chats>>) {
     match _remake_side_panel(chats) {
         Ok(_) => (),
-        Err(err) => print_to_console(format!("Failed to remake the side panel. Err: {err:?}")),
+        Err(err) => {
+            print_to_console(format!("Failed to remake the side panel. Err: {err:?}"));
+            panic![]
+        }
     }
 }
 fn _remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
@@ -1441,7 +1422,8 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
 
     // Login area.  Hiddent to start with
     let login_div = document.create_element("DIV")?;
-    let (username_input, password_input) = username_password_elements()?;
+    login_div.set_id("side_panel_login_div");
+    let (username_input, password_input) = username_password_elements("side_panel")?;
     let user_text_submit = document.create_element("button")?;
     user_text_submit.set_id("user_text_submit");
     user_text_submit.set_inner_html("Login");
@@ -1456,6 +1438,17 @@ fn make_side_panel(document: &Document, chats: Rc<RefCell<Chats>>) -> Result<Ele
     });
     on_click.forget();
     side_panel_div.append_child(&login_div)?;
+
+    add_css_rule(document, "#side_panel_username_input", "display", "flex")?;
+    add_css_rule(document, "#side_panel_login_div", "display", "flex")?;
+    add_css_rule(
+        document,
+        "#side_panel_login_div",
+        "flex-direction",
+        "column",
+    )?;
+    add_css_rule(document, "#side_panel_login_div", "align-items", "center")?;
+
     Ok(side_panel_div)
 }
 

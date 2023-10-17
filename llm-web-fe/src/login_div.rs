@@ -32,7 +32,7 @@ impl LlmWebPage for LoginDiv {
         login_fields_div.set_id("login-fields-div");
 
         // Username and pasword elements
-        let (username_input, password_input) = username_password_elements()?;
+        let (username_input, password_input) = username_password_elements("login_div")?;
 
         // Hack so logging in quicker
         // username_input.set_attribute("value", "a")?;
@@ -134,7 +134,11 @@ fn login_cb(msg: Message, username: String) {
     };
 }
 
-pub fn username_password_elements() -> Result<(HtmlInputElement, HtmlInputElement), JsValue> {
+/// The pair of HtmlInputElements for logging in.  `prefix` to avoid
+/// name collisions
+pub fn username_password_elements(
+    prefix: &str,
+) -> Result<(HtmlInputElement, HtmlInputElement), JsValue> {
     let document = get_doc();
     let username_input = document
         .create_element("input")?
@@ -142,11 +146,13 @@ pub fn username_password_elements() -> Result<(HtmlInputElement, HtmlInputElemen
     let password_input = document
         .create_element("input")?
         .dyn_into::<HtmlInputElement>()?;
-    username_input.set_id("username_input");
-    password_input.set_id("password_input");
+    username_input.set_id(format!("{prefix}_username_input").as_str());
+    password_input.set_id(format!("{prefix}_password_input").as_str());
     username_input.set_attribute("type", "text")?;
     password_input.set_attribute("type", "password")?;
     username_input.set_attribute("autocomplete", "username")?;
     password_input.set_attribute("autocomplete", "current-password")?;
+    username_input.set_attribute("placeholder", "username")?;
+    password_input.set_attribute("placeholder", "password")?;
     Ok((username_input, password_input))
 }
