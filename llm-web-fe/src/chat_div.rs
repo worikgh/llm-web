@@ -93,13 +93,7 @@ impl LlmWebPage for ChatDiv {
         prompt_div.append_child(&prompt_inp)?;
 
         // The submit button
-        let submit_button: HtmlButtonElement = document
-            .create_element("button")
-            .map_err(|err| format!("Error creating button element: {:?}", err))?
-            .dyn_into::<HtmlButtonElement>()
-            .map_err(|err| format!("Error casting to HtmlButtonElement: {:?}", err))?;
-        submit_button.set_inner_text("submit");
-        submit_button.set_id("chat_submit");
+        let submit_button: HtmlButtonElement = new_button(document, "chat_submit", "submit")?;
         let cc = chats.clone();
         let closure_onclick =
             Closure::wrap(Box::new(move || chat_submit_cb(cc.clone())) as Box<dyn Fn()>);
@@ -128,9 +122,9 @@ impl LlmWebPage for ChatDiv {
         let side_panel_div = make_side_panel(document, chats.clone())?;
 
         // Put the page together
-        chat_div.append_child(&conversation_div).unwrap();
-        chat_div.append_child(&prompt_div).unwrap();
-        chat_div.append_child(&side_panel_div).unwrap();
+        chat_div.append_child(&conversation_div)?;
+        chat_div.append_child(&prompt_div)?;
+        chat_div.append_child(&side_panel_div)?;
 
         // Prepare variables to control page layout
 
@@ -464,6 +458,8 @@ impl Conversation {
         if self.responses.is_empty() {
             format!("{}: Empty conversation", self.key)
         } else {
+            // Forced unwrap OK because guraded responses.is_empty()
+            // is false
             let label = &self.responses.first().unwrap().0;
             let label = if label.len() > 17 {
                 label[..17].to_string()
@@ -553,9 +549,15 @@ impl Chats {
         // Preconditions:
         // 1. There is a current conversation
         // 2. The `prompt` is not None in current conversation
-        let conversation = self.get_conversation_mut(&conversation_key).unwrap();
-        // conversation.cost = conversation_cost;
-        let prompt: String = conversation.prompt.as_ref().unwrap().clone();
+        let conversation = self
+            .get_conversation_mut(&conversation_key)
+            .ok_or(format!("Failed to get conversation: {conversation_key}").as_str())?;
+
+        let prompt: String = conversation
+            .prompt
+            .as_ref()
+            .ok_or(format!("Failed to get conversation prompt: {conversation_key}").as_str())?
+            .clone();
         conversation.prompt = None;
         conversation.responses.push((prompt, response));
         Ok(())
@@ -638,62 +640,72 @@ fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
 /// Open an area for entering multi line text for a prompt and
 /// submitting it
 fn open_multi_line_window_cl(_chats: Rc<RefCell<Chats>>) {
-    // print_to_console("open_multi_line_window 1");
-    let document = get_doc();
-    let multi_line_div = document.create_element("DIV").unwrap();
+    let closure = move || -> Result<(), JsValue> {
+        // print_to_console("open_multi_line_window 1");
+        let document = get_doc();
+        let multi_line_div = document.create_element("DIV")?;
 
-    multi_line_div.set_id("multi_line_div");
-    let multi_line_textarea: HtmlTextAreaElement = document
-        .create_element("textarea")
-        .unwrap()
-        .dyn_into::<HtmlTextAreaElement>()
-        .unwrap();
+        multi_line_div.set_id("multi_line_div");
+        let multi_line_textarea: HtmlTextAreaElement = document
+            .create_element("textarea")?
+            .dyn_into::<HtmlTextAreaElement>()?;
 
-    multi_line_textarea.set_id("multi_line_textarea");
-    multi_line_div.append_child(&multi_line_textarea).unwrap();
+        multi_line_textarea.set_id("multi_line_textarea");
+        multi_line_div.append_child(&multi_line_textarea)?;
 
-    // Submit and cancel buttons
-    let cancel_button: HtmlButtonElement = document
-        .create_element("button")
-        .unwrap()
-        .dyn_into::<HtmlButtonElement>()
-        .unwrap();
-    cancel_button.set_inner_text("Cancel");
-    let cancel_closure = Closure::wrap(Box::new(close_multi_line_window_cl) as Box<dyn Fn()>);
-    cancel_button.set_onclick(Some(cancel_closure.as_ref().unchecked_ref()));
-    cancel_closure.forget();
-    multi_line_div.append_child(&cancel_button).unwrap();
+        // Submit and cancel buttons
+        let cancel_button: HtmlButtonElement = new_button(&document, "cancel_multiline", "Cancel")?;
 
-    let submit_button: HtmlButtonElement = document
-        .create_element("button")
-        .unwrap()
-        .dyn_into::<HtmlButtonElement>()
-        .unwrap();
-    submit_button.set_inner_text("Submit");
-    let cc = _chats.clone();
-    let submit_closure = Closure::wrap(Box::new(move || {
-        submit_multi_line_window_cb(cc.clone());
-        close_multi_line_window_cl()
-    }) as Box<dyn Fn()>);
-    submit_button.set_onclick(Some(submit_closure.as_ref().unchecked_ref()));
-    submit_closure.forget();
-    multi_line_div.append_child(&submit_button).unwrap();
+        cancel_button.set_inner_text("Cancel");
+        let cancel_closure = Closure::wrap(Box::new(close_multi_line_window_cl) as Box<dyn Fn()>);
+        cancel_button.set_onclick(Some(cancel_closure.as_ref().unchecked_ref()));
+        cancel_closure.forget();
+        multi_line_div.append_child(&cancel_button)?;
 
-    let chat_div = document.get_element_by_id("chat_div").unwrap();
-    chat_div.append_child(&multi_line_div).unwrap();
+        let submit_button: HtmlButtonElement =
+            new_button(&document, "submit_multiline", "DSubmit")?;
+
+        let cc = _chats.clone();
+        let submit_closure = Closure::wrap(Box::new(move || {
+            submit_multi_line_window_cb(cc.clone());
+            close_multi_line_window_cl()
+        }) as Box<dyn Fn()>);
+        submit_button.set_onclick(Some(submit_closure.as_ref().unchecked_ref()));
+        submit_closure.forget();
+        multi_line_div.append_child(&submit_button)?;
+
+        let chat_div = document
+            .get_element_by_id("chat_div")
+            .ok_or("Failed to get chat_div")?;
+        chat_div.append_child(&multi_line_div)?;
+        Ok(())
+    };
+    if let Err(err) = closure() {
+        print_to_console(format!("open_multi_line_window_cl failed.  err: {err:?}"));
+        panic![];
+    }
 }
+
 /// Submit button in multi line window
 fn submit_multi_line_window_cb(chats: Rc<RefCell<Chats>>) {
-    let document = get_doc();
-    let prompt: String = document
-        .get_element_by_id("multi_line_textarea")
-        .unwrap()
-        .dyn_into::<HtmlTextAreaElement>()
-        .unwrap()
-        .value();
-    send_prompt(prompt, chats.clone());
-    remake_side_panel(chats.clone());
+    let closure = move || -> Result<(), JsValue> {
+        let document = get_doc();
+        let prompt: String = document
+            .get_element_by_id("multi_line_textarea")
+            .unwrap()
+            .dyn_into::<HtmlTextAreaElement>()
+            .unwrap()
+            .value();
+        send_prompt(prompt, chats.clone());
+        remake_side_panel(chats.clone())?;
+        Ok(())
+    };
+    if let Err(err) = closure() {
+        print_to_console(format!("Failed submit_multi_line_window_cb. err: {err:?}"));
+        panic![];
+    }
 }
+
 /// Close multi line window
 fn close_multi_line_window_cl() {
     let document = get_doc();
@@ -850,94 +862,118 @@ fn make_request_cb(
     conversations: Rc<RefCell<Chats>>,
     current_conversation: usize,
 ) {
-    set_status(format!("make_request_cb 1 {}", message.comm_type).as_str());
-    match message.comm_type {
-        CommType::ChatResponse => {
-            let chat_response: ChatResponse =
-                serde_json::from_str(message.object.as_str()).unwrap();
-            process_chat_response(chat_response, conversations.clone(), current_conversation)
-                .unwrap();
-            remake_side_panel(conversations.clone());
-        }
-        CommType::InvalidRequest => {
-            let inr: InvalidRequest =
-                serde_json::from_str(message.object.as_str()).expect("Not an InvalidRequest");
-            set_status(&inr.reason);
-            // Enable the prompt div as there will be no valid return
-            enable_prompt_div().unwrap();
-            // Need to login again
-            set_focus_on_element("username_input");
-        }
-        _ => (),
+    let closure = move || -> Result<(), JsValue> {
+        set_status(format!("make_request_cb 1 {}", message.comm_type).as_str());
+        match message.comm_type {
+            CommType::ChatResponse => {
+                let chat_response: ChatResponse = serde_json::from_str(message.object.as_str())
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
+                process_chat_response(chat_response, conversations.clone(), current_conversation)?;
+                remake_side_panel(conversations.clone())?;
+            }
+            CommType::InvalidRequest => {
+                let inr: InvalidRequest =
+                    serde_json::from_str(message.object.as_str()).expect("Not an InvalidRequest");
+                set_status(&inr.reason);
+                // Enable the prompt div as there will be no valid return
+                enable_prompt_div()?;
+                // Need to login again
+                set_focus_on_element("username_input");
+            }
+            _ => (),
+        };
+        Ok(())
     };
+    if let Err(err) = closure() {
+        print_to_console(format!("make_request_cb failed.  err: {err:?}"));
+        panic![];
+    }
 }
 /// Callback for conversation select
 fn select_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
-    let target = event.target().unwrap();
-    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+    let closure = move || -> Result<(), JsValue> {
+        let target = event
+            .target()
+            .ok_or(format!("Cannot get event target.  Event: {event:?}"))?;
+        let target_element = target
+            .dyn_ref::<web_sys::HtmlElement>()
+            .ok_or("Cannot cast element into HtmlElement")?;
 
-    // Get the ID off the clicked radio button
-    let id = target_element.id();
+        // Get the ID off the clicked radio button
+        let id = target_element.id();
 
-    // Radio: conversation_radio_1
-    let id = id.as_str();
-    let id = &id["conversation_radio_".len()..];
-    match id.parse() {
-        Ok(key) => {
-            // `key` is the selected conversation
-            match chats.try_borrow_mut() {
-                Ok(mut chats) => match chats.set_current_conversation(key) {
-                    Ok(()) => (),
+        // Radio: conversation_radio_1
+        let id = id.as_str();
+        let id = &id["conversation_radio_".len()..];
+        match id.parse() {
+            Ok(key) => {
+                // `key` is the selected conversation
+                match chats.try_borrow_mut() {
+                    Ok(mut chats) => chats.set_current_conversation(key)?,
                     Err(_err) => {
-                        print_to_console(format!("Failed to set current conversation to: {key}"));
+                        print_to_console("Cannot borrow_mut chats current_radio_click handler");
                         panic![];
                     }
-                },
-                Err(_err) => {
-                    print_to_console("Cannot borrow_mut chats current_radio_click handler");
-                    panic![];
+                };
+                // Redraw the response screen
+                match chats.try_borrow() {
+                    // Forced unwrap OK because `key` is current conversation
+                    Ok(chats_ref) => {
+                        let conv = chats_ref
+                            .conversations
+                            .get(&key)
+                            .ok_or(format!("Cannot get conversation for key: {key}"))?;
+                        update_response_screen(conv, chats.clone());
+                    }
+                    Err(err) => print_to_console(format!(
+                        "select_conversation_cb: Failed to clone chats: {err:?}"
+                    )),
                 }
-            };
-            // Redraw the response screen
-            match chats.try_borrow() {
-                // Forced unwrap OK because `key` is current conversation
-                Ok(chats_ref) => {
-                    let conv = chats_ref.conversations.get(&key).unwrap();
-                    update_response_screen(conv, chats.clone());
-                }
-                Err(err) => print_to_console(format!(
-                    "select_conversation_cb: Failed to clone chats: {err:?}"
-                )),
             }
-        }
-        Err(err) => print_to_console(format!("Cannot parse id: {id}. Error: {err:?}")),
-    };
+            Err(err) => print_to_console(format!("Cannot parse id: {id}. Error: {err:?}")),
+        };
 
-    //....
-    remake_side_panel(chats.clone());
+        //....
+        remake_side_panel(chats.clone())?;
+        Ok(())
+    };
+    if let Err(err) = closure() {
+        print_to_console(format!("select_conversation_cb failed.  err: {err:?}"));
+        panic![];
+    }
 }
 
 /// New conversation callback
 fn new_conversation_cb(chats: Rc<RefCell<Chats>>) {
-    match make_new_conversation(chats.clone()) {
-        Ok(key) => {
-            set_current_conversation(chats.clone(), key);
-            // Make the new conversation the current.  FIXME:  This is convoluted
-            match chats.try_borrow() {
-                Ok(chats_ref) => {
-                    update_response_screen(
-                        chats_ref.conversations.get(&key).unwrap(),
-                        chats.clone(),
-                    );
+    let closure = move || -> Result<(), JsValue> {
+        match make_new_conversation(chats.clone()) {
+            Ok(key) => {
+                set_current_conversation(chats.clone(), key);
+                // Make the new conversation the current.  FIXME:  This is convoluted
+                match chats.try_borrow() {
+                    Ok(chats_ref) => {
+                        update_response_screen(
+                            chats_ref
+                                .conversations
+                                .get(&key)
+                                .ok_or(format!("Cannot get conversation for key: {key}"))?,
+                            chats.clone(),
+                        );
+                    }
+                    Err(err) => print_to_console(format!(
+                        "new_conversation_callback: Failed to clone chats: {err:?}"
+                    )),
                 }
-                Err(err) => print_to_console(format!(
-                    "new_conversation_callback: Failed to clone chats: {err:?}"
-                )),
             }
+            Err(err) => print_to_console(format!("Failed to make new conversation: {err:?}")),
         }
-        Err(err) => print_to_console(format!("Failed to make new conversation: {err:?}")),
+        remake_side_panel(chats.clone())?;
+        Ok(())
+    };
+    if let Err(err) = closure() {
+        print_to_console(format!("style_experiment_cb failed.  err: {err:?}"));
+        panic![];
     }
-    remake_side_panel(chats.clone());
 }
 
 /// Style experiment button
@@ -962,94 +998,111 @@ fn style_experiment_cb() {
 
 /// Calcel button callback
 fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
-    print_to_console("cancel_cb 1");
-    let target = event.target().unwrap();
-    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+    let closure = move || -> Result<(), JsValue> {
+        print_to_console("cancel_cb 1");
+        let target = event
+            .target()
+            .ok_or(format!("Cannot get target for event: {event:?}"))?;
+        let target_element = target.dyn_ref::<web_sys::HtmlElement>().ok_or(format!(
+            "Cannot convert target into HtmlElement for event: {event:?}"
+        ))?;
 
-    // Get the ID off the clicked radio button
-    let id = target_element.id();
-    print_to_console(format!("cancel_cb 1.3 id: {id}"));
-    let id = id.as_str();
-    print_to_console(format!("cancel_cb 1.4 id: {id}"));
-    let id = &id["cancel_request_".len()..];
-    print_to_console(format!("cancel_cb 1.5 id: {id}"));
-    let id = match id.parse::<usize>() {
-        Ok(id) => id,
-        Err(_err) => {
-            print_to_console(format!("cancel_cb cannot parse id from event: {event:?}"));
-            return;
-        }
-    };
+        // Get the ID off the clicked radio button
+        let id = target_element.id();
+        let id = id.as_str();
+        let id = &id["cancel_request_".len()..];
+        let id = match id.parse::<usize>() {
+            Ok(id) => id,
+            Err(err) => {
+                return Err(JsValue::from_str(
+                    format!("Could not get cancel_request_id.  id: {id}. err: {err:?}").as_str(),
+                ));
+            }
+        };
 
-    match chats.try_borrow_mut() {
-        Ok(mut m_chats) => {
-            match m_chats.get_conversation(&id) {
-                Some(cc) => match &cc.request {
-                    Some(xhr) => {
-                        print_to_console(format!("cancel_cb 1.6 id: {id}"));
-                        xhr.abort().unwrap();
-                        print_to_console(format!("cancel_cb 1.7 id: {id}"));
-                        if let Some(cc) = m_chats.get_conversation_mut(&id) {
-                            cc.prompt = None;
+        match chats.try_borrow_mut() {
+            Ok(mut m_chats) => {
+                match m_chats.get_conversation(&id) {
+                    Some(cc) => match &cc.request {
+                        Some(xhr) => {
+                            xhr.abort().unwrap();
                             print_to_console(format!("cancel_cb 1.7 id: {id}"));
-                            cc.request = None;
-                        } else {
-                            print_to_console("Cannot get current conversation for abort");
+                            if let Some(cc) = m_chats.get_conversation_mut(&id) {
+                                cc.prompt = None;
+                                cc.request = None;
+                            } else {
+                                print_to_console("Cannot get current conversation for abort");
+                            }
                         }
-                    }
-                    None => print_to_console("Got no xhr"),
-                },
-                None => print_to_console("Got no cc"),
-            };
-        }
-        Err(err) => {
-            print_to_console(format!(
-                "Failed to borrow chats `make_conversation_list` {err:?}"
-            ));
-            panic![];
-        }
+                        None => print_to_console("Got no xhr"),
+                    },
+                    None => print_to_console("Got no cc"),
+                };
+            }
+            Err(err) => {
+                return Err(JsValue::from_str(
+                    format!("Failed to borrow chats `make_conversation_list` {err:?}").as_str(),
+                ))
+            }
+        };
+        remake_side_panel(chats.clone())?;
+        Ok(())
     };
-    remake_side_panel(chats.clone());
+    if let Err(err) = closure() {
+        print_to_console(format!("cancel_cb failed.  err: {err:?}"));
+        panic![];
+    }
 }
 
 /// Callback for conversation delete button
 fn delete_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
-    print_to_console("delete_conversation_cb 1");
-    let target = event.target().unwrap();
-    let target_element = target.dyn_ref::<web_sys::HtmlElement>().unwrap();
+    let closure = move || -> Result<(), JsValue> {
+        print_to_console("delete_conversation_cb 1");
+        let target = event
+            .target()
+            .ok_or(format!("Failed to get target for event: {event:?}"))?;
+        let target_element = target.dyn_ref::<web_sys::HtmlElement>().ok_or(format!(
+            "Faired to get target into HtmlElement for event: {event:?}"
+        ))?;
 
-    // Get the ID off the clicked radio button
-    let id = target_element.id();
-    let id = id.as_str();
-    let id = &id["delete_conversation_".len()..];
-    match id.parse::<usize>() {
-        Err(err) => print_to_console(format!(
-            "Cannot parse {id} setting up delete conversation button: Error: {err}"
-        )),
-        Ok(key) => {
-            print_to_console("delete_conversation_cb 1.1  Got key");
-            // `key` is the conversation to delete
-            match chats.try_borrow_mut() {
-                Err(_err) => {
-                    print_to_console("Delete conversation handler faied to borrow mut chats");
-                    panic![];
-                }
-                Ok(mut chats_mut) => {
-                    if let Some(cc) = chats_mut.current_conversation {
-                        if cc == key {
-                            // Deleting current conversation
-                            clear_response_screen();
-                        }
+        // Get the ID off the clicked radio button
+        let id = target_element.id();
+        let id = id.as_str();
+        let id = &id["delete_conversation_".len()..];
+        match id.parse::<usize>() {
+            Err(err) => print_to_console(format!(
+                "Cannot parse {id} setting up delete conversation button: Error: {err}"
+            )),
+            Ok(key) => {
+                print_to_console("delete_conversation_cb 1.1  Got key");
+                // `key` is the conversation to delete
+                match chats.try_borrow_mut() {
+                    Err(_err) => {
+                        print_to_console("Delete conversation handler faied to borrow mut chats");
+                        panic![];
                     }
-                    chats_mut.delete_conversation(key);
-                }
-            };
-            print_to_console("delete_conversation_cb 1.2");
+                    Ok(mut chats_mut) => {
+                        if let Some(cc) = chats_mut.current_conversation {
+                            if cc == key {
+                                // Deleting current conversation
+                                clear_response_screen();
+                            }
+                        }
+                        chats_mut.delete_conversation(key);
+                    }
+                };
+                print_to_console("delete_conversation_cb 1.2");
 
-            remake_side_panel(chats.clone());
-            print_to_console("delete_conversation_cb 2");
-        }
+                remake_side_panel(chats.clone())?;
+                print_to_console("delete_conversation_cb 2");
+            }
+        };
+        Ok(())
     };
+    if let Err(err) = closure() {
+        print_to_console(format!("delete_conversation_cb failed.  err: {err:?}"));
+        panic![];
+    }
 }
 
 /// Marshal a message to send to LLM
@@ -1120,80 +1173,28 @@ fn send_prompt(prompt: String, chats: Rc<RefCell<Chats>>) {
 fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
     // print_to_console("chat_submit 1");
     // Get the contents of the prompt
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    let prompt_input: HtmlInputElement = document
-        .get_element_by_id("prompt_input")
-        .unwrap()
-        .dyn_into::<HtmlInputElement>()
-        .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))
-        .unwrap();
-    let prompt = prompt_input.value();
-    prompt_input.set_value("");
-    set_status(format!("Sending prompt: {prompt}").as_str());
-    send_prompt(prompt, chats.clone());
-    // // The history or the chat so far, plus latest prompt
-    // let messages: Vec<LLMMessage> = build_messages(chats.clone(), prompt.clone());
-    // // The model to use
-    // let model = get_model();
+    let closure = move || -> Result<(), JsValue> {
+        let document = window()
+            .ok_or("Failed to get Window")?
+            .document()
+            .ok_or("Failed to get document")?;
+        let prompt_input: HtmlInputElement = document
+            .get_element_by_id("prompt_input")
+            .ok_or("Failed to get prompt_input")?
+            .dyn_into::<HtmlInputElement>()
+            .map_err(|err| format!("Error casting to HtmlInputElement: {:?}", err))?;
 
-    // // Get the token
-    // let token: String;
-    // if let Some(t) = document.body().unwrap().get_attribute("data.token") {
-    //     token = t;
-    // } else {
-    //     todo!("Set status concerning error: No data token");
-    // }
-
-    // let chat_prompt = ChatPrompt {
-    //     model,
-    //     messages,
-    //     temperature: 1.0, // Todo: Get this from user interface
-    //     token,
-    // };
-
-    // let message: Message = Message::from(chat_prompt);
-
-    // // Need to tell the callback for `make_request` what conversation
-    // // is being used.  Cannot rely "current_convesation" as it may
-    // // change while the network request is under way
-    // let current_conversation: usize = match chats.try_borrow() {
-    //     Err(_err) => {
-    //         print_to_console(
-    //             "Failed borrowing chats to get current conversation for request callback",
-    //         );
-    //         panic![];
-    //         //            return;
-    //     }
-    //     Ok(chats) => match chats.current_conversation {
-    //         Some(cc) => cc,
-    //         None => {
-    //             print_to_console(
-    //                 "Failed borrowing chats to get current conversation for request callback",
-    //             );
-    //             panic![]; //                return;
-    //         }
-    //     },
-    // };
-    // let chats_make_req_cb = chats.clone();
-    // let xhr = make_request(
-    //     message,
-    //     move |message: Message| {
-    //         make_request_cb(message, chats_make_req_cb.clone(), current_conversation)
-    //     },
-    //     abort_request_cb,
-    // )
-    // .unwrap();
-    // match chats.try_borrow_mut() {
-    //     Err(err) => {
-    //         print_to_console(format!("Failed to borrow chats `chat_submit_cb`: {err:?}"));
-    //         panic![];
-    //     }
-    //     Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
-    // };
-
-    remake_side_panel(chats.clone());
+        let prompt = prompt_input.value();
+        prompt_input.set_value("");
+        set_status(format!("Sending prompt: {prompt}").as_str());
+        send_prompt(prompt, chats.clone());
+        remake_side_panel(chats.clone())?;
+        Ok(())
+    };
+    if let Err(err) = closure() {
+        print_to_console(format!("Failed chat_submit_cb. err: {err:?}"));
+        panic![];
+    }
 }
 
 /// Disables the HTML elements used to enter a prompt
@@ -1335,17 +1336,9 @@ fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> 
     result
 }
 
-/// Remake the side panel
-fn remake_side_panel(chats: Rc<RefCell<Chats>>) {
-    match _remake_side_panel(chats) {
-        Ok(_) => (),
-        Err(err) => {
-            print_to_console(format!("Failed to remake the side panel. Err: {err:?}"));
-            panic![]
-        }
-    }
-}
-fn _remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
+/// Remake the side panel.
+/// Called after a change to keep side-panel up to date
+fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");
@@ -1598,7 +1591,12 @@ fn make_conversation_list(
             let chats_clone = chats.clone();
             let event_handler = Closure::wrap(Box::new(move |_event: Event| {
                 cancel_cb(&_event, chats_clone.clone());
-                remake_side_panel(chats_clone.clone());
+                if let Err(err) = remake_side_panel(chats_clone.clone()) {
+                    print_to_console(format!(
+                        "Fail rmake side panel canceling conversation.  Err: {err:?}"
+                    ));
+                    panic![];
+                }
             }) as Box<dyn FnMut(_)>);
 
             cancel_button.set_onclick(Some(event_handler.as_ref().unchecked_ref()));
@@ -1646,7 +1644,7 @@ fn get_model() -> String {
     model
 }
 
-/// Set the model to use.
+/// Set the model displayed in the side panel
 fn set_model(new_model: &str) {
     let document = window()
         .and_then(|win| win.document())

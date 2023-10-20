@@ -9,67 +9,8 @@ use wasm_bindgen::prelude::*;
 use web_sys::{window, HtmlButtonElement};
 use web_sys::{Document, HtmlElement};
 
-pub enum Pages {
-    ChatDiv,
-    LoginDiv,
-}
-/// `set_page(f)`: Display a page.  `f` is the function that builds
-/// the page to display.
-/// Structure of the page
-pub fn set_page(page: Pages) -> Result<(), JsValue> {
-    // Get the main document
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    let body = document.body().expect("Could not access document.body");
-
-    let e = match page {
-        Pages::ChatDiv => ChatDiv::initialise_page(&document)?,
-        Pages::LoginDiv => LoginDiv::initialise_page(&document)?,
-    };
-    if let Some(main_body) = document.get_element_by_id("main_body") {
-        main_body.set_inner_html("");
-        main_body.append_child(&e)?;
-        body.append_child(&main_body)?;
-        set_focus_on_element("prompt-input");
-    } else {
-        print_to_console("No `main_body` in page.  Has not been initialised");
-        panic!("Died");
-    }
-    Ok(())
-}
-
-#[allow(dead_code)]
-pub fn set_status(status: &str) {
-    let document: &Document = &get_doc();
-    let status = &text_for_html(status);
-    if let Some(status_element) = document.get_element_by_id("status_div") {
-        status_element.set_inner_html(status);
-    } else {
-        print_to_console(format!("Status (No status-div): {status}"));
-    }
-}
-
-#[allow(dead_code)]
-pub fn set_focus_on_element(element_id: &str) {
-    let document: &Document = &get_doc();
-    // print_to_console("set_focus_on_element 1");
-    if let Some(element) = document.get_element_by_id(element_id) {
-        if let Some(input) = element.dyn_ref::<HtmlElement>() {
-            input.focus().unwrap();
-        } else {
-            print_to_console(format!(
-                "Failed to set focus. Found {element_id} but is not a HtmlElement.  {element:?}"
-            ));
-        }
-    } else {
-        print_to_console(format!(
-            "Failed to set focus.  Could not find: {element_id}"
-        ));
-    }
-}
-
-/// Set up the basic page with header, footer, and body
+/// Set up the basic page with header, footer, and body.  Called once
+/// at start of programme
 #[allow(dead_code)]
 pub fn initialise_page() -> Result<(), JsValue> {
     let document = window()
@@ -167,6 +108,65 @@ pub fn initialise_page() -> Result<(), JsValue> {
     Ok(())
 }
 
+/// The Pages that constitute this web app
+pub enum Pages {
+    ChatDiv,
+    LoginDiv,
+}
+/// Change the "main_body" DIV's content
+/// `page` indicates what with
+pub fn set_page(page: Pages) -> Result<(), JsValue> {
+    // Get the main document
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+    let body = document.body().expect("Could not access document.body");
+
+    let e = match page {
+        Pages::ChatDiv => ChatDiv::initialise_page(&document)?,
+        Pages::LoginDiv => LoginDiv::initialise_page(&document)?,
+    };
+    if let Some(main_body) = document.get_element_by_id("main_body") {
+        main_body.set_inner_html("");
+        main_body.append_child(&e)?;
+        body.append_child(&main_body)?;
+    } else {
+        print_to_console("No `main_body` in page.  Has not been initialised");
+        panic!("Died");
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn set_focus_on_element(element_id: &str) {
+    let document: &Document = &get_doc();
+    // print_to_console("set_focus_on_element 1");
+    if let Some(element) = document.get_element_by_id(element_id) {
+        if let Some(input) = element.dyn_ref::<HtmlElement>() {
+            input.focus().unwrap();
+        } else {
+            print_to_console(format!(
+                "Failed to set focus. Found {element_id} but is not a HtmlElement.  {element:?}"
+            ));
+        }
+    } else {
+        print_to_console(format!(
+            "Failed to set focus.  Could not find: {element_id}"
+        ));
+    }
+}
+
+#[allow(dead_code)]
+pub fn set_status(status: &str) {
+    let document: &Document = &get_doc();
+    let status = &text_for_html(status);
+    if let Some(status_element) = document.get_element_by_id("status_div") {
+        status_element.set_inner_html(status);
+    } else {
+        print_to_console(format!("Status (No status-div): {status}"));
+    }
+}
+
 /// Update the cost display
 pub fn update_cost_display(document: &Document, credit: f64) {
     let cost_div = document.get_element_by_id("cost_div").unwrap();
@@ -174,7 +174,7 @@ pub fn update_cost_display(document: &Document, credit: f64) {
     cost_div.set_inner_html(cost_string.as_str());
 }
 
-/// Update the user display
+/// Display logged in user in header
 pub fn update_user_display() {
     let document = get_doc();
     if let Some(t) = document.body().unwrap().get_attribute("data.username") {
@@ -183,7 +183,9 @@ pub fn update_user_display() {
     }
 }
 
-/// Make a button
+/// Helper function to make a button.
+/// `id`
+/// `display` is string to display
 pub fn new_button(
     document: &Document,
     id: &str,
@@ -202,6 +204,7 @@ pub fn new_button(
     Ok(result)
 }
 
+/// Helper function to get the Document
 pub fn get_doc() -> Document {
     window()
         .and_then(|win| win.document())
