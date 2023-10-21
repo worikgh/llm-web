@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 use std::{env, fs, io};
@@ -43,24 +44,26 @@ pub struct AppBackend {
     /// The front end logs in and starts a session.  Sessions are
     /// indexed by the session token
     pub sessions: Arc<Mutex<HashMap<String, Session>>>,
+    testing: bool,
 }
 
 impl AppBackend {
-    pub fn new() -> Self {
+    pub fn new(testing: bool) -> Self {
         let sessions = Arc::new(Mutex::new(HashMap::<String, Session>::new()));
-        Self { sessions }
+        Self { sessions, testing }
     }
 
     /// Main loop
-    pub async fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn run_server(testing: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // First parameter is port number (optional, defaults to 1337)
-        let port = match env::args().nth(1) {
-            Some(ref p) => p.to_owned(),
-            None => "1337".to_owned(),
-        };
-        let addr = format!("127.0.0.1:{}", port).parse()?;
+        let port: usize = std::env::args()
+            .nth(1)
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(1337);
 
-        let app_backend = AppBackend::new();
+        let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
+
+        let app_backend = AppBackend::new(testing);
         let data_server = Arc::new(app_backend);
         let service = make_service_fn(move |_: _| {
             let data_server = Arc::clone(&data_server);
@@ -263,9 +266,13 @@ impl AppBackend {
                 .await
                 .unwrap();
 
-            let chat_response: (HashMap<String, String>, ChatRequestInfo) = match response_result {
-                Ok(response) => response,
-                Err(err) => return err,
+            let chat_response: (HashMap<String, String>, ChatRequestInfo) = if self.testing {
+                (HashMap::new(), ChatRequestInfo::test_instance())
+            } else {
+                match response_result {
+                    Ok(response) => response,
+                    Err(err) => return err,
+                }
             };
 
             let mut result = "".to_string();
@@ -518,7 +525,7 @@ mod tests {
             comm_type: CommType::LoginRequest,
             object: serde_json::to_string(&lr).unwrap(),
         };
-        let server = AppBackend::new();
+        let server = AppBackend::new(true);
         let result = server.process_login(&msg).await;
         eprintln!("result ({})", result,);
         assert!(result.comm_type == CommType::LoginResponse);
@@ -536,7 +543,7 @@ mod tests {
             comm_type: CommType::ChatPrompt,
             object: serde_json::to_string(&lr).unwrap(),
         };
-        let server = AppBackend::new();
+        let server = AppBackend::new(true);
         let result = server.process_login(&msg).await;
         eprintln!("result.comm_type ({})", result.comm_type,);
         assert!(result.comm_type == CommType::InvalidRequest);
@@ -545,7 +552,7 @@ mod tests {
     #[tokio::test]
     async fn server_test() {
         // Server to test
-        let server = AppBackend::new();
+        let server = AppBackend::new(true);
 
         // A user name and password to add
         let username = get_unique_user("server::test::server_test").await;

@@ -74,6 +74,31 @@ pub struct ChatRequestInfo {
     pub choices: Vec<ChatChoice>,
 }
 
+/// To facilitate testing the front end whithout bothering the LLM
+impl ChatRequestInfo {
+    pub fn test_instance() -> Self {
+        ChatRequestInfo {
+            id: "TestID".to_string(),
+            object: "test_object".to_string(),
+            created: 0,
+            model: "gpt-3-test_model".to_string(),
+            usage: Usage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+            },
+            choices: vec![ChatChoice {
+                index: 0,
+                message: Message {
+                    role: "Testing".to_string(),
+                    content: "Test content".to_string(),
+                },
+                finish_reason: "Test reason".to_string(),
+            }],
+        }
+    }
+}
+
 /// To receive the transcribed text
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AudioTranscriptionResponse {

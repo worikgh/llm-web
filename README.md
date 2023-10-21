@@ -70,6 +70,13 @@ Start the web server.  For lighttpd, if configured using a high port, this is as
 
 * In a browser navigate to the hosting website.  If this is all run on one computer with no changes to the defaults that is: https://localhost:8081/llm-web/fe
 
+### Testing
+
+Pass "test" as the sole argument to `llm-web-be` and it will respond to chat requests with constant replies rather than contact  the LLM.
+
+Very rudimentary so far. 
+
+
 * Log in 
 
 ---
