@@ -648,8 +648,7 @@ fn open_multi_line_window_cl(chats: Rc<RefCell<Chats>>) {
         cancel_closure.forget();
         multi_line_div.append_child(&cancel_button)?;
 
-        let submit_button: HtmlButtonElement =
-            new_button(&document, "submit_multiline", "DSubmit")?;
+        let submit_button: HtmlButtonElement = new_button(&document, "submit_multiline", "Submit")?;
 
         let cc = chats.clone();
         let submit_closure = Closure::wrap(Box::new(move || {
