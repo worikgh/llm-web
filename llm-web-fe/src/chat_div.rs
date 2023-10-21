@@ -25,9 +25,8 @@ use llm_web_common::communication::LLMMessage;
 use llm_web_common::communication::LLMMessageType;
 use llm_web_common::communication::Message;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-//use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use web_sys::KeyboardEvent;
 use web_sys::{Event, XmlHttpRequest};
@@ -363,9 +362,11 @@ impl Conversation {
         }
     }
 
+    /// Sum the costs of all the responses
     fn cost(&self) -> f64 {
         self.responses.iter().fold(0.0, |a, b| a + b.1.cost)
     }
+
     /// Get a display to put in response area.  Transform the text
     /// into HTML, and put class definitions in for prompts and
     /// responses so they can be styled
@@ -473,6 +474,7 @@ impl Conversation {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+
 /// All the conversations in play
 pub struct Chats {
     conversations: HashMap<usize, Conversation>,
@@ -522,24 +524,6 @@ impl Chats {
         }
     }
 
-    /// Get the current conversation to read
-    fn get_current_conversation(&self) -> Option<&Conversation> {
-        if let Some(cv) = &self.current_conversation {
-            self.conversations.get(cv)
-        } else {
-            None
-        }
-    }
-
-    /// Get the current conversation to mutate
-    fn get_current_conversation_mut(&mut self) -> Option<&mut Conversation> {
-        if let Some(cv) = &mut self.current_conversation {
-            self.conversations.get_mut(cv)
-        } else {
-            None
-        }
-    }
-
     /// Update a conversation when response received
     fn update_conversation(
         &mut self,
@@ -563,32 +547,52 @@ impl Chats {
         Ok(())
     }
 
-    /// Get a conversation to mutate
-    fn get_conversation_mut(&mut self, current_conversation: &usize) -> Option<&mut Conversation> {
-        self.conversations.get_mut(current_conversation)
-    }
+    // Delete a conversation.  Itis an error if the conversation does not exist
+    fn delete_conversation(&mut self, key: usize) -> Result<(), JsValue> {
+        self.conversations.remove(&key).ok_or(format!(
+            "Chats::delete conversation: Key {key} does not exist"
+        ))?;
 
-    /// Get a conversation to read
-    fn get_conversation(&self, current_conversation: &usize) -> Option<&Conversation> {
-        self.conversations.get(current_conversation)
-    }
-
-    /// Check that a conversation exists
-    fn conversation_exists(&self, key: usize) -> bool {
-        self.conversations.get(&key).is_some()
-    }
-
-    fn delete_conversation(&mut self, key: usize) {
-        if self.conversations.remove(&key).is_none() {
-            print_to_console(format!(
-                "Chats::delete conversation: Key {key} does not exist"
-            ));
-        }
+        // Check if it was the currecnt conversation deleted
         if let Some(cc) = self.current_conversation {
             if cc == key {
                 self.current_conversation = None;
             }
         }
+        Ok(())
+    }
+
+    /// Get the current conversation to read.  If there is one
+    fn get_current_conversation(&self) -> Option<&Conversation> {
+        if let Some(cv) = &self.current_conversation {
+            self.conversations.get(cv)
+        } else {
+            None
+        }
+    }
+
+    /// Get the current conversation to mutate, if there is one
+    fn get_current_conversation_mut(&mut self) -> Option<&mut Conversation> {
+        if let Some(cv) = &mut self.current_conversation {
+            self.conversations.get_mut(cv)
+        } else {
+            None
+        }
+    }
+
+    /// Get a conversation to read
+    fn get_conversation(&self, conversation_key: &usize) -> Option<&Conversation> {
+        self.conversations.get(conversation_key)
+    }
+
+    /// Get a conversation to mutate
+    fn get_conversation_mut(&mut self, conversation_key: &usize) -> Option<&mut Conversation> {
+        self.conversations.get_mut(conversation_key)
+    }
+
+    /// Check that a conversation exists
+    fn conversation_exists(&self, key: usize) -> bool {
+        self.conversations.get(&key).is_some()
     }
 
     /// Return 1 + max(keys)
@@ -619,27 +623,9 @@ impl Drop for Chats {
     }
 }
 
-/// Make a new conversation in `chats`.  Called in response to user
-/// request (E.g. side-panel button)
-fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
-    match chats.try_borrow_mut() {
-        Err(err) => {
-            let result = format!("Failed to borrow chats making a new conversation: {err}");
-            print_to_console(result);
-            panic![];
-            //return Err(JsValue::from_str(result.as_str()));
-        }
-        Ok(mut chats) => {
-            let key = chats.new_conversation_key();
-            chats.conversations.insert(key, Conversation::new(key));
-            Ok(key)
-        }
-    }
-}
-
 /// Open an area for entering multi line text for a prompt and
 /// submitting it
-fn open_multi_line_window_cl(_chats: Rc<RefCell<Chats>>) {
+fn open_multi_line_window_cl(chats: Rc<RefCell<Chats>>) {
     let closure = move || -> Result<(), JsValue> {
         // print_to_console("open_multi_line_window 1");
         let document = get_doc();
@@ -665,7 +651,7 @@ fn open_multi_line_window_cl(_chats: Rc<RefCell<Chats>>) {
         let submit_button: HtmlButtonElement =
             new_button(&document, "submit_multiline", "DSubmit")?;
 
-        let cc = _chats.clone();
+        let cc = chats.clone();
         let submit_closure = Closure::wrap(Box::new(move || {
             submit_multi_line_window_cb(cc.clone());
             close_multi_line_window_cl()
@@ -696,7 +682,7 @@ fn submit_multi_line_window_cb(chats: Rc<RefCell<Chats>>) {
             .dyn_into::<HtmlTextAreaElement>()
             .unwrap()
             .value();
-        send_prompt(prompt, chats.clone());
+        send_prompt(prompt, chats.clone())?;
         remake_side_panel(chats.clone())?;
         Ok(())
     };
@@ -735,104 +721,6 @@ fn set_current_conversation(chats: Rc<RefCell<Chats>>, key: usize) {
     }
 }
 
-/// A prompt has returned from the LLM.  Process it here
-fn process_chat_response(
-    chat_response: ChatResponse,
-    chats: Rc<RefCell<Chats>>,
-    conversation_key: usize,
-) -> Result<(), JsValue> {
-    // print_to_console(format!("process_chat_request 1: {chat_response:?}"));
-
-    // Check if conversation has been deleted while the LLM was working
-    if !match chats.try_borrow() {
-        Ok(chats_ref) => chats_ref.conversation_exists(conversation_key),
-        Err(err) => {
-            print_to_console(format!(
-                "Failed to borrow chats `process_chat_response`: {err:?}"
-            ));
-            panic![];
-            //false
-        }
-    } {
-        return Err(JsValue::from_str(
-            "Conversation deleted while waiting for response?",
-        ));
-    }
-
-    // Save this to display it
-    let credit = chat_response.credit;
-
-    // A new round to be added to the current conversation
-    //cas.update_current_conversation(chat_response)?;
-
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-
-    match chats.try_borrow_mut() {
-        Err(err) => {
-            print_to_console(format!(
-                "Failed to borrow chats `process_chat_response`: {err:?}"
-            ));
-            panic![];
-        }
-        Ok(mut cas) => {
-            cas.credit = credit;
-            cas.update_conversation(chat_response, conversation_key)?;
-            if let Some(cc) = cas.current_conversation {
-                // There is a current conversation
-                if cc == conversation_key {
-                    // This data returned is for the current
-                    // conversation So update display
-                    if let Some(c) = cas.get_conversation(&conversation_key) {
-                        update_response_screen(c, chats.clone());
-                    } else {
-                        panic!("Cannot get coversation");
-                    };
-                }
-            }
-        }
-    };
-
-    update_cost_display(&document, credit);
-    update_user_display();
-    Ok(())
-}
-
-/// Remove all responses from the screen
-fn clear_response_screen() {
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-    let result_div = document.get_element_by_id("response_div").unwrap();
-    result_div.set_inner_html("");
-}
-
-/// Display the current conversation or clear the response screen if
-/// there is none:
-fn update_response_screen(conversation: &Conversation, chats: Rc<RefCell<Chats>>) {
-    //print_to_console("update_response_screen 1");
-    let document = window()
-        .and_then(|win| win.document())
-        .expect("Failed to get document");
-
-    let response_div = document.get_element_by_id("response_div").unwrap();
-    // Clear the children
-    let response_childs = response_div.children();
-    for i in 0..response_childs.length() {
-        let child = response_childs.item(i).unwrap();
-        response_div.remove_child(&child).unwrap();
-    }
-
-    let contents = conversation.get_response_display(chats.clone()).unwrap();
-
-    response_div.append_child(&contents).unwrap();
-
-    // Scroll to the bottom
-    response_div.set_scroll_top(response_div.scroll_height());
-    // print_to_console("update_response_screen 2");
-}
-
 /// The callback for abort fetching a response
 fn abort_request_cb() {
     set_status("Abort request");
@@ -842,18 +730,26 @@ fn abort_request_cb() {
 /// that says what chat to remove it from, and `index` that says which
 /// is the first to remove.  Remove it and all following it
 fn prune_submit_cb(chat: usize, index: usize, chats: Rc<RefCell<Chats>>) {
-    match chats.try_borrow_mut() {
-        Err(_err) => {
-            print_to_console("Faile to borrow chats in prune submit callback");
-            panic![];
-        }
-        Ok(mut chats_mut) => {
-            // Forced unwrapp OK because the chat passed in has been selected
-            let conversation = chats_mut.conversations.get_mut(&chat).unwrap();
-            conversation.responses = conversation.responses.iter().take(index).cloned().collect();
-            update_response_screen(chats_mut.conversations.get(&chat).unwrap(), chats.clone());
-        }
+    let closure = move || -> Result<(), JsValue> {
+        match chats.try_borrow_mut() {
+            Err(_err) => {
+                print_to_console("Faile to borrow chats in prune submit callback");
+                panic![];
+            }
+            Ok(mut chats_mut) => {
+                // Forced unwrapp OK because the chat passed in has been selected
+                let conversation = chats_mut.conversations.get_mut(&chat).unwrap();
+                conversation.responses =
+                    conversation.responses.iter().take(index).cloned().collect();
+                update_response_screen(chats_mut.conversations.get(&chat).unwrap(), chats.clone())?;
+            }
+        };
+        Ok(())
     };
+    if let Err(err) = closure() {
+        print_to_console(format!("prune_submit_cb failed.  err: {err:?}"));
+        panic![];
+    }
 }
 
 /// The callback for `make_request`
@@ -889,6 +785,7 @@ fn make_request_cb(
         panic![];
     }
 }
+
 /// Callback for conversation select
 fn select_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
     let closure = move || -> Result<(), JsValue> {
@@ -923,7 +820,7 @@ fn select_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
                             .conversations
                             .get(&key)
                             .ok_or(format!("Cannot get conversation for key: {key}"))?;
-                        update_response_screen(conv, chats.clone());
+                        update_response_screen(conv, chats.clone())?;
                     }
                     Err(err) => print_to_console(format!(
                         "select_conversation_cb: Failed to clone chats: {err:?}"
@@ -958,7 +855,7 @@ fn new_conversation_cb(chats: Rc<RefCell<Chats>>) {
                                 .get(&key)
                                 .ok_or(format!("Cannot get conversation for key: {key}"))?,
                             chats.clone(),
-                        );
+                        )?;
                     }
                     Err(err) => print_to_console(format!(
                         "new_conversation_callback: Failed to clone chats: {err:?}"
@@ -999,7 +896,7 @@ fn style_experiment_cb() {
 /// Calcel button callback
 fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
     let closure = move || -> Result<(), JsValue> {
-        print_to_console("cancel_cb 1");
+        //print_to_console("cancel_cb 1");
         let target = event
             .target()
             .ok_or(format!("Cannot get target for event: {event:?}"))?;
@@ -1026,7 +923,7 @@ fn cancel_cb(event: &Event, chats: Rc<RefCell<Chats>>) {
                     Some(cc) => match &cc.request {
                         Some(xhr) => {
                             xhr.abort().unwrap();
-                            print_to_console(format!("cancel_cb 1.7 id: {id}"));
+                            //print_to_console(format!("cancel_cb 1.7 id: {id}"));
                             if let Some(cc) = m_chats.get_conversation_mut(&id) {
                                 cc.prompt = None;
                                 cc.request = None;
@@ -1085,10 +982,10 @@ fn delete_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
                         if let Some(cc) = chats_mut.current_conversation {
                             if cc == key {
                                 // Deleting current conversation
-                                clear_response_screen();
+                                clear_response_screen()?;
                             }
                         }
-                        chats_mut.delete_conversation(key);
+                        chats_mut.delete_conversation(key)?;
                     }
                 };
                 print_to_console("delete_conversation_cb 1.2");
@@ -1103,70 +1000,6 @@ fn delete_conversation_cb(event: Event, chats: Rc<RefCell<Chats>>) {
         print_to_console(format!("delete_conversation_cb failed.  err: {err:?}"));
         panic![];
     }
-}
-
-/// Marshal a message to send to LLM
-fn send_prompt(prompt: String, chats: Rc<RefCell<Chats>>) {
-    let document = get_doc();
-    // The history or the chat so far, plus latest prompt
-    let messages: Vec<LLMMessage> = build_messages(chats.clone(), prompt.clone());
-    // The model to use
-    let model = get_model();
-
-    // Get the token
-    let token: String;
-    if let Some(t) = document.body().unwrap().get_attribute("data.token") {
-        token = t;
-    } else {
-        todo!("Set status concerning error: No data token");
-    }
-
-    let chat_prompt = ChatPrompt {
-        model,
-        messages,
-        temperature: 1.0, // Todo: Get this from user interface
-        token,
-    };
-
-    let message: Message = Message::from(chat_prompt);
-
-    // Need to tell the callback for `make_request` what conversation
-    // is being used.  Cannot rely "current_convesation" as it may
-    // change while the network request is under way
-    let current_conversation: usize = match chats.try_borrow() {
-        Err(_err) => {
-            print_to_console(
-                "Failed borrowing chats to get current conversation for request callback",
-            );
-            panic![];
-            //            return;
-        }
-        Ok(chats) => match chats.current_conversation {
-            Some(cc) => cc,
-            None => {
-                print_to_console(
-                    "Failed borrowing chats to get current conversation for request callback",
-                );
-                panic![]; //                return;
-            }
-        },
-    };
-    let chats_make_req_cb = chats.clone();
-    let xhr = make_request(
-        message,
-        move |message: Message| {
-            make_request_cb(message, chats_make_req_cb.clone(), current_conversation)
-        },
-        abort_request_cb,
-    )
-    .unwrap();
-    match chats.try_borrow_mut() {
-        Err(err) => {
-            print_to_console(format!("Failed to borrow chats `chat_submit_cb`: {err:?}"));
-            panic![];
-        }
-        Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
-    };
 }
 
 /// The callback for the submit button to send a prompt to the model.
@@ -1187,7 +1020,7 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
         let prompt = prompt_input.value();
         prompt_input.set_value("");
         set_status(format!("Sending prompt: {prompt}").as_str());
-        send_prompt(prompt, chats.clone());
+        send_prompt(prompt, chats.clone())?;
         remake_side_panel(chats.clone())?;
         Ok(())
     };
@@ -1195,6 +1028,186 @@ fn chat_submit_cb(chats: Rc<RefCell<Chats>>) {
         print_to_console(format!("Failed chat_submit_cb. err: {err:?}"));
         panic![];
     }
+}
+
+/// Make a new conversation in `chats`.  Called in response to user
+/// request (E.g. side-panel button)
+fn make_new_conversation(chats: Rc<RefCell<Chats>>) -> Result<usize, JsValue> {
+    match chats.try_borrow_mut() {
+        Err(err) => {
+            let result = format!("Failed to borrow chats making a new conversation: {err}");
+            print_to_console(result);
+            panic![];
+            //return Err(JsValue::from_str(result.as_str()));
+        }
+        Ok(mut chats) => {
+            let key = chats.new_conversation_key();
+            chats.conversations.insert(key, Conversation::new(key));
+            Ok(key)
+        }
+    }
+}
+
+/// A prompt has returned from the LLM.  Process it here
+fn process_chat_response(
+    chat_response: ChatResponse,
+    chats: Rc<RefCell<Chats>>,
+    conversation_key: usize,
+) -> Result<(), JsValue> {
+    // print_to_console(format!("process_chat_request 1: {chat_response:?}"));
+
+    // Check if conversation has been deleted while the LLM was working
+    if !match chats.try_borrow() {
+        Ok(chats_ref) => chats_ref.conversation_exists(conversation_key),
+        Err(err) => {
+            print_to_console(format!(
+                "Failed to borrow chats `process_chat_response`: {err:?}"
+            ));
+            panic![];
+            //false
+        }
+    } {
+        return Err(JsValue::from_str(
+            "Conversation deleted while waiting for response?",
+        ));
+    }
+
+    // Save this to display it
+    let credit = chat_response.credit;
+
+    // A new round to be added to the current conversation
+    //cas.update_current_conversation(chat_response)?;
+
+    let document = window()
+        .and_then(|win| win.document())
+        .expect("Failed to get document");
+
+    match chats.try_borrow_mut() {
+        Err(err) => {
+            print_to_console(format!(
+                "Failed to borrow chats `process_chat_response`: {err:?}"
+            ));
+            panic![];
+        }
+        Ok(mut cas) => {
+            cas.credit = credit;
+            cas.update_conversation(chat_response, conversation_key)?;
+            if let Some(cc) = cas.current_conversation {
+                // There is a current conversation
+                if cc == conversation_key {
+                    // This data returned is for the current
+                    // conversation So update display
+                    if let Some(c) = cas.get_conversation(&conversation_key) {
+                        update_response_screen(c, chats.clone())?;
+                    } else {
+                        panic!("Cannot get coversation");
+                    };
+                }
+            }
+        }
+    };
+
+    update_cost_display(&document, credit);
+    update_user_display();
+    Ok(())
+}
+
+/// Remove all responses from the screen
+fn clear_response_screen() -> Result<(), JsValue> {
+    let document = get_doc();
+    let result_div = document
+        .get_element_by_id("response_div")
+        .ok_or("Failed to get response_div")?;
+    result_div.set_inner_html("");
+    Ok(())
+}
+
+/// Display the current conversation or clear the response screen if
+/// there is none:
+fn update_response_screen(
+    conversation: &Conversation,
+    chats: Rc<RefCell<Chats>>,
+) -> Result<(), JsValue> {
+    //print_to_console("update_response_screen 1");
+    let document = get_doc();
+
+    let response_div = document
+        .get_element_by_id("response_div")
+        .ok_or("Failed to get response_div")?;
+    // Clear the children
+    let response_childs = response_div.children();
+    for i in 0..response_childs.length() {
+        let child = response_childs
+            .item(i)
+            .ok_or(format!("Cannot get response div child: {i}"))?;
+        response_div.remove_child(&child)?;
+    }
+
+    let contents = conversation.get_response_display(chats.clone())?;
+
+    response_div.append_child(&contents)?;
+
+    // Scroll to the bottom
+    response_div.set_scroll_top(response_div.scroll_height());
+    // print_to_console("update_response_screen 2");
+    Ok(())
+}
+
+/// Marshal a message to send to LLM
+fn send_prompt(prompt: String, chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
+    let document = get_doc();
+    // The history or the chat so far, plus latest prompt
+    let messages: Vec<LLMMessage> = build_messages(chats.clone(), prompt.clone());
+    // The model to use
+    let model = get_model();
+
+    // Get the token
+    let token = document
+        .body()
+        .ok_or("send_prompt: Cannot get <body>")?
+        .get_attribute("data.token")
+        .ok_or("send_prompt:Cannot get token")?;
+
+    let chat_prompt = ChatPrompt {
+        model,
+        messages,
+        temperature: 1.0, // Todo: Get this from user interface
+        token,
+    };
+
+    let message: Message = Message::from(chat_prompt);
+
+    // Need to tell the callback for `make_request` what conversation
+    // is being used.  Cannot rely "current_convesation" as it may
+    // change while the network request is under way
+    let current_conversation: usize = match chats.try_borrow() {
+        Err(_err) => {
+            print_to_console(
+                "Failed borrowing chats to get current conversation for request callback",
+            );
+            panic![];
+        }
+        Ok(chats) => chats
+            .current_conversation
+            .ok_or("send_prompt: Cannot get current conversation")?,
+    };
+    let chats_make_req_cb = chats.clone();
+    let xhr = make_request(
+        message,
+        move |message: Message| {
+            make_request_cb(message, chats_make_req_cb.clone(), current_conversation)
+        },
+        abort_request_cb,
+    )
+    .unwrap();
+    match chats.try_borrow_mut() {
+        Err(err) => {
+            print_to_console(format!("Failed to borrow chats `chat_submit_cb`: {err:?}"));
+            panic![];
+        }
+        Ok(mut chats) => chats.get_current_conversation_mut().unwrap().request = Some(xhr),
+    };
+    Ok(())
 }
 
 /// Disables the HTML elements used to enter a prompt
@@ -1275,65 +1288,6 @@ fn prompt_div_inactive_query() -> Result<(), JsValue> {
         enable_prompt_div()?;
     }
     Ok(())
-}
-
-/// Called to construct the messages for a request.  Each interaction
-/// with the LLM includes a history of prevous interactions.  In the
-/// general case this is the history of the current conversation.
-/// `prompt` is the user's latest input
-fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> {
-    // `messages` is the historical response, build it here.
-    let mut result: Vec<LLMMessage> = Vec::new();
-
-    // The "role" is first.  Allways using the same role (TODO: this
-    // needs to be configurable)
-    result.push(LLMMessage {
-        role: LLMMessageType::System,
-        content: "You are a helpful assistant".to_string(),
-    });
-
-    match chats.try_borrow_mut() {
-        Err(err) => {
-            print_to_console(format!("Failed to borrow chats `build_messages` {err:?}"));
-            panic![];
-        }
-        Ok(mut chats) => {
-            // Then the history of the conversation
-            match chats.get_current_conversation() {
-                Some(conversation) => {
-                    for i in 0..conversation.responses.len() {
-                        // chat_state.responses[i] has a prompt and a response.
-                        let prompt: String = conversation.responses[i].0.clone();
-                        let response: String = conversation.responses[i].1.response.clone();
-
-                        result.push(LLMMessage {
-                            role: LLMMessageType::User,
-                            content: prompt,
-                        });
-                        result.push(LLMMessage {
-                            role: LLMMessageType::Assistant,
-                            content: response,
-                        });
-                    }
-                }
-                None => {
-                    // There is no current conversation.
-                    (*chats).initialise_current_conversation();
-                }
-            }
-            // Finally the prompt
-            result.push(LLMMessage {
-                role: LLMMessageType::User,
-                content: prompt.clone(),
-            });
-            chats
-                .get_current_conversation_mut()
-                .as_mut()
-                .unwrap()
-                .prompt = Some(prompt);
-        }
-    };
-    result
 }
 
 /// Remake the side panel.
@@ -1606,6 +1560,65 @@ fn make_conversation_list(
     }
     conversation_list_div.append_child(&ul)?;
     Ok(conversation_list_div)
+}
+
+/// Called to construct the messages for a request.  Each interaction
+/// with the LLM includes a history of prevous interactions.  In the
+/// general case this is the history of the current conversation.
+/// `prompt` is the user's latest input
+fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> {
+    // `messages` is the historical response, build it here.
+    let mut result: Vec<LLMMessage> = Vec::new();
+
+    // The "role" is first.  Allways using the same role (TODO: this
+    // needs to be configurable)
+    result.push(LLMMessage {
+        role: LLMMessageType::System,
+        content: "You are a helpful assistant".to_string(),
+    });
+
+    match chats.try_borrow_mut() {
+        Err(err) => {
+            print_to_console(format!("Failed to borrow chats `build_messages` {err:?}"));
+            panic![];
+        }
+        Ok(mut chats) => {
+            // Then the history of the conversation
+            match chats.get_current_conversation() {
+                Some(conversation) => {
+                    for i in 0..conversation.responses.len() {
+                        // chat_state.responses[i] has a prompt and a response.
+                        let prompt: String = conversation.responses[i].0.clone();
+                        let response: String = conversation.responses[i].1.response.clone();
+
+                        result.push(LLMMessage {
+                            role: LLMMessageType::User,
+                            content: prompt,
+                        });
+                        result.push(LLMMessage {
+                            role: LLMMessageType::Assistant,
+                            content: response,
+                        });
+                    }
+                }
+                None => {
+                    // There is no current conversation.
+                    (*chats).initialise_current_conversation();
+                }
+            }
+            // Finally the prompt
+            result.push(LLMMessage {
+                role: LLMMessageType::User,
+                content: prompt.clone(),
+            });
+            chats
+                .get_current_conversation_mut()
+                .as_mut()
+                .unwrap()
+                .prompt = Some(prompt);
+        }
+    };
+    result
 }
 
 /// Get the model that the user has selected from the side panel
