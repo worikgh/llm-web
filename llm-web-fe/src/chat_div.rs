@@ -42,9 +42,9 @@ use web_sys::{
 /// The model names
 const GPT_3: (&str, &str) = ("gpt-3.5-turbo", "GPT-3.5");
 const GPT_4: (&str, &str) = ("gpt-4", "GPT-4");
-const GPT_4_0_MINI:  (&str, &str) = ("gpt-4o-mini", "GPT-4o mini");
-const O1_PREVIEW:  (&str, &str) = ("o1-preview", "o1-preview");
-const O1_MINI:  (&str, &str) = ("o1-mini", "o1-mini");
+const GPT_4_0_MINI: (&str, &str) = ("gpt-4o-mini", "GPT-4o mini");
+const O1_PREVIEW: (&str, &str) = ("o1-preview", "o1-preview");
+const O1_MINI: (&str, &str) = ("o1-mini", "o1-mini");
 
 /// Hold the code for creating and manipulating the chat_div
 #[derive(Debug, Deserialize)]
@@ -1376,8 +1376,8 @@ fn make_model_selection_tool(document: &Document) -> Result<HtmlDivElement, JsVa
         .dyn_into::<HtmlInputElement>()
         .map_err(|err| format!("Error casting to HtmlImageElement: {:?}", err))?;
     select_element.set_id("model_chat");
-    let models = [GPT_3.0, GPT_4.0, GPT_4_0_MINI.0, O1_PREVIEW.0, O1_MINI.0,];
-    let names = [GPT_3.1, GPT_4.1, GPT_4_0_MINI.1, O1_PREVIEW.1, O1_MINI.1,];
+    let models = [GPT_3.0, GPT_4.0, GPT_4_0_MINI.0, O1_PREVIEW.0, O1_MINI.0];
+    let names = [GPT_3.1, GPT_4.1, GPT_4_0_MINI.1, O1_PREVIEW.1, O1_MINI.1];
     let options = models
         .iter()
         .zip(names.iter())
@@ -1640,7 +1640,6 @@ fn make_conversation_list(
     document: &Document,
     chats: Rc<RefCell<Chats>>,
 ) -> Result<Element, JsValue> {
-
     let conversation_list_div = document.create_element("div")?;
     conversation_list_div.set_id("conversation_list_div");
     // Collect the data to build the display widgets (<li>...</li>)
