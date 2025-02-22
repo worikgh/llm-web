@@ -43,8 +43,6 @@ use web_sys::{
     HtmlInputElement, HtmlLabelElement, HtmlSpanElement, HtmlTextAreaElement,
 };
 
-/// The model names
-
 /// Hold the code for creating and manipulating the chat_div
 #[derive(Debug, Deserialize)]
 pub struct ChatDiv;
