@@ -85,11 +85,13 @@ impl LlmWebPage for LoginDiv {
 
 /// Send the login request to the backend
 pub fn do_login(username: String, password: String) -> Result<XmlHttpRequest, JsValue> {
+    print_to_console("do_login 1");
     let login_request = LoginRequest {
         username: username.clone(),
         password,
     };
     let login_message = Message::from(login_request);
+    print_to_console("do_login 2");
     make_request(
         login_message,
         move |msg: Message| login_cb(msg, username.clone()),

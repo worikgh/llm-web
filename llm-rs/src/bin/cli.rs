@@ -164,6 +164,7 @@ impl CliInterface {
         let mut incomming_image_file = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(true)
             .open(&incomming_image_file_path)?;
         println!("Created {:?}", incomming_image_file_path);
         incomming_image_file.write_all(&img_data)?;
@@ -485,7 +486,7 @@ impl CliInterface {
 		"ppx" => {
 		    // Print out the conversation to the passed path
 		    // in a human readable form
-			    
+
 		    let file_path: String = meta.collect::<Vec<&str>>().join(" ");
 		    response_text = match File::create(file_path.clone()) {
 			Ok(mut f) => {
@@ -498,7 +499,7 @@ impl CliInterface {
 			    f.write_all(context.as_bytes())?;
 			    format!("Wrote context to {file_path}")
 			}
-		    
+
 			Err(err) => {
 			    // Failed to create file
 			    format!("{err}: Failed to open file at: {file_path}")
@@ -506,7 +507,7 @@ impl CliInterface {
 
 		    };
 		}
-		
+
                 "v" => {
                     // set verbosity
                     if let Some(v) = meta.next() {
@@ -629,7 +630,7 @@ impl CliInterface {
                     let id: String = meta.collect::<Vec<&str>>().join(" ");
 		    response_text = match api_interface.fine_tune_retrieve(id.as_str()) {
 			Ok(res) => res.body,
-			Err(err) => format!("{err}: Failed ftr => fine_tune_retrieve {id}"),			
+			Err(err) => format!("{err}: Failed ftr => fine_tune_retrieve {id}"),
 		    }
 		}
 		"ftl" => {
@@ -653,9 +654,7 @@ impl CliInterface {
                         }
                     };
 		}
-			
-			    
-		    
+
                 "fl" => {
                     // Load a file's contents into a buffer to use as
                     // part of a prompt
@@ -786,7 +785,6 @@ impl CliInterface {
                     .insert(k.clone(), response_headers.get(k).unwrap().clone());
                 result += &format!("{k}: {}\n", response_headers[k]);
             }
-        } else {
         }
         Ok(result)
     }
@@ -846,7 +844,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Keep  record of the conversations
     let mut options = OpenOptions::new();
     let mut conversation_record_file: File = options
-        .write(true)
         .append(true)
         .create(true)
         .open(cli_interface.record_file.as_str())

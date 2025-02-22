@@ -1,4 +1,4 @@
-/// Make a XmlHttpRequest to the backend.  
+/// Make a XmlHttpRequest to the backend.
 #[allow(unused_imports)]
 use crate::utility::print_to_console;
 use llm_web_common::communication::{CommType, Message};
@@ -20,6 +20,8 @@ pub fn make_request(
     mut callback_onload: impl FnMut(Message) + 'static,
     callback_onabort: impl FnMut() + 'static,
 ) -> Result<XmlHttpRequest, JsValue> {
+    print_to_console("make_request 1");
+
     let api = match message.comm_type {
         CommType::LoginRequest => "login",
         CommType::ChatPrompt => "chat",
@@ -49,6 +51,7 @@ pub fn make_request(
             let response = xhr_clone.response_text().unwrap().unwrap();
             // Do something with response..
             let message: Message = serde_json::from_str(response.as_str()).unwrap();
+            print_to_console("Data arrived");
             callback_onload(message);
         }
     }) as Box<dyn FnMut(_)>);
@@ -70,5 +73,6 @@ pub fn make_request(
     xhr.send_with_opt_u8_array(Some(message_str.as_bytes()))
         .unwrap();
 
+    print_to_console("make_request 10");
     Ok(xhr)
 }

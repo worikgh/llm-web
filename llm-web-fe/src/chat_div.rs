@@ -1,5 +1,7 @@
 //! The code that drives the "chat" interface
 use crate::elements::create_div;
+use crate::elements::create_input;
+use crate::elements::create_span;
 use crate::filters;
 use crate::filters::text_for_html;
 use crate::llm_webpage::LlmWebPage;
@@ -24,10 +26,12 @@ use llm_web_common::communication::InvalidRequest;
 use llm_web_common::communication::LLMMessage;
 use llm_web_common::communication::LLMMessageType;
 use llm_web_common::communication::Message;
+use llm_web_common::model::Model;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::str::FromStr;
 use web_sys::HtmlCollection;
 use web_sys::KeyboardEvent;
 use web_sys::{Event, XmlHttpRequest};
@@ -40,11 +44,6 @@ use web_sys::{
 };
 
 /// The model names
-const GPT_3: (&str, &str) = ("gpt-3.5-turbo", "GPT-3.5");
-const GPT_4: (&str, &str) = ("gpt-4", "GPT-4");
-const GPT_4_0_MINI: (&str, &str) = ("gpt-4o-mini", "GPT-4o mini");
-const O1_PREVIEW: (&str, &str) = ("o1-preview", "o1-preview");
-const O1_MINI: (&str, &str) = ("o1-mini", "o1-mini");
 
 /// Hold the code for creating and manipulating the chat_div
 #[derive(Debug, Deserialize)]
@@ -118,7 +117,7 @@ impl LlmWebPage for ChatDiv {
         prompt_div.append_child(&multi_line_button)?;
 
         let side_panel_div = make_side_panel(document, chats.clone())?;
-        set_selected_model(GPT_4_0_MINI.0, &side_panel_div)?;
+        set_selected_model(Model::Gpt4oMini, &side_panel_div)?;
 
         // Put the page together
         chat_div.append_child(&conversation_div)?;
@@ -1212,7 +1211,7 @@ fn send_prompt(prompt: String, chats: Rc<RefCell<Chats>>) -> Result<(), JsValue>
     // The history or the chat so far, plus latest prompt
     let messages: Vec<LLMMessage> = build_messages(chats.clone(), prompt.clone());
     // The model to use
-    let model = get_model().unwrap();
+    let model: Model = get_model().unwrap();
 
     // Get the token
     let token = document
@@ -1351,7 +1350,7 @@ fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
 
     // Get the data from the side-panel that have changed from defaults
     // Model
-    let model = get_model();
+    let model = get_model()?;
 
     let new_side_panel_div = make_side_panel(&document, chats.clone())?;
     let old_side_panel = document
@@ -1363,45 +1362,34 @@ fn remake_side_panel(chats: Rc<RefCell<Chats>>) -> Result<(), JsValue> {
     parent.replace_child(&new_side_panel_div, &old_side_panel)?;
 
     // Reset the data that may have changed from the defaults
-    set_model(model.unwrap().as_str())?;
+    set_model(model)?;
     Ok(())
 }
 
 /// The widget to select which model to use.
 fn make_model_selection_tool(document: &Document) -> Result<HtmlDivElement, JsValue> {
     let result = create_div(document, Some("model_selection_tool"))?;
-    let select_element: HtmlInputElement = document
-        .create_element("input")
-        .map_err(|err| format!("Error creating button element: {:?}", err))?
-        .dyn_into::<HtmlInputElement>()
-        .map_err(|err| format!("Error casting to HtmlImageElement: {:?}", err))?;
-    select_element.set_id("model_chat");
-    let models = [GPT_3.0, GPT_4.0, GPT_4_0_MINI.0, O1_PREVIEW.0, O1_MINI.0];
-    let names = [GPT_3.1, GPT_4.1, GPT_4_0_MINI.1, O1_PREVIEW.1, O1_MINI.1];
+    let models = Model::variants();
+    let names = models
+        .iter()
+        .map(|m| m.to_string())
+        .collect::<Vec<String>>();
     let options = models
         .iter()
         .zip(names.iter())
         .map(|(m, n)| {
-            let element = document
-                .create_element("input")
-                .expect("Create model <input>");
-            let input: HtmlInputElement =
-                element.dyn_into().expect("Cast to HtmlInputElement failed");
-            input.set_type("radio"); //.expect("Set model <input> type");
+            let input: HtmlInputElement = create_input(document, None).unwrap();
+            input.set_type("radio");
             input.set_class_name("model_input");
             input.set_name("model");
-            input.set_value(m);
+            input.set_value(m.as_str());
             let label: HtmlLabelElement = document
                 .create_element("label")
                 .expect("Create model <label>")
                 .dyn_into()
                 .expect("Cast to HtmlLabelElement failed");
             label.set_inner_html(n);
-            let s: HtmlSpanElement = document
-                .create_element("span")
-                .expect("Create model <span>")
-                .dyn_into()
-                .expect("Cast to HtmlSpanElement failed");
+            let s: HtmlSpanElement = create_span(document, None).unwrap();
             s.append_child(&input).unwrap();
             s.append_child(&label).unwrap();
             s
@@ -1413,11 +1401,11 @@ fn make_model_selection_tool(document: &Document) -> Result<HtmlDivElement, JsVa
     Ok(result)
 }
 
-fn set_selected_model(model: &str, model_selection_tool: &Element) -> Result<(), JsValue> {
+fn set_selected_model(model: Model, model_selection_tool: &Element) -> Result<(), JsValue> {
     let elements: HtmlCollection = model_selection_tool.get_elements_by_class_name("model_input");
     for i in 0..elements.length() {
         let inp: HtmlInputElement = elements.item(i).unwrap().dyn_into()?;
-        if inp.value().as_str() == model {
+        if inp.value().as_str() == model.as_str() {
             inp.set_checked(true);
         } else {
             inp.set_checked(false);
@@ -1856,7 +1844,7 @@ fn build_messages(chats: Rc<RefCell<Chats>>, prompt: String) -> Vec<LLMMessage> 
 }
 
 /// Get the model that the user has selected from the side panel
-fn get_model() -> Result<String, JsValue> {
+fn get_model() -> Result<Model, JsValue> {
     // Worik: I am having a debate with myself: Should the `document`
     // be passed around or should it be grabbed from the global
     // environment each time?
@@ -1874,11 +1862,13 @@ fn get_model() -> Result<String, JsValue> {
         .and_then(|win| win.document())
         .expect("Failed to get document");
     let model: String = get_selected_model(&document).unwrap();
-    Ok(model)
+
+    // FIXME Convert error rather than unwrap
+    Ok(Model::from_str(&model).unwrap())
 }
 
 /// Set the model displayed in the side panel
-fn set_model(new_model: &str) -> Result<(), JsValue> {
+fn set_model(new_model: Model) -> Result<(), JsValue> {
     let document = window()
         .and_then(|win| win.document())
         .expect("Failed to get document");

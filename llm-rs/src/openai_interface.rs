@@ -717,7 +717,7 @@ impl ApiInterface {
     }
 
     /// Handle the response if the user queries what models there are
-    /// ("! mm" prompt in cli).  
+    /// ("! mm" prompt in cli).
     pub fn model_list(&self) -> Result<ApiResult<String>, Box<dyn Error>> {
         let uri: String = format!("{}/models", API_URL);
         let mut response = self
@@ -801,7 +801,6 @@ impl ApiInterface {
         list.append(format!("Authorization: Bearer {}", api_key).as_str())?;
         list.append("Content-Type: application/json")?;
         curl_easy.http_headers(list)?;
-
         // I am unsure why I have to do this magick incantation
         curl_easy.post_field_size(body.len() as u64)?;
 
@@ -810,7 +809,6 @@ impl ApiInterface {
 
         // To get the headers
         let mut header_buffer = Vec::new();
-
         // Time the process.
         let start = Instant::now();
 

@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::fmt;
 use uuid::Uuid;
 
+use crate::model::Model;
+
 /// The communication between the front end and the back end uses
 /// `Message` struct.  `CommType` categorises the communication and
 /// defines what object is being relayed in the `Message.object` type
@@ -86,7 +88,7 @@ pub struct LLMMessage {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct ChatPrompt {
     /// The model to use
-    pub model: String,
+    pub model: Model,
 
     //
     pub messages: Vec<LLMMessage>,

@@ -30,6 +30,7 @@ use llm_web_common::communication::{CommType, LoginRequest};
 use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::env;
 use std::error::Error;
 use std::fmt;
 use std::net::SocketAddr;
@@ -37,12 +38,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::vec::Vec;
-use std::{env, fs, io};
 use uuid::Uuid;
-
-fn _error(err: String) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, err)
-}
 
 #[derive(Debug, Clone)]
 pub struct AppBackend {
@@ -60,52 +56,69 @@ impl AppBackend {
 
     /// Main loop
     pub async fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // First parameter is port number (optional, defaults to 1337)
-        let port: usize = // std::env::args()
-        // .nth(1)
-        // .and_then(|p| p.parse().ok())
-        // .unwrap_or(1337);
-	    1337;
-        let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
-
-        let app_backend = AppBackend::new();
-        let data_server = Arc::new(app_backend);
+        let data_server = Arc::new(AppBackend::new());
         let service = make_service_fn(move |_: _| {
             let data_server = Arc::clone(&data_server);
             async move {
                 Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
-                    eprintln!(
-                        "request: Credit {:?}",
-                        (*data_server.sessions.clone().lock().unwrap())
-                            .values()
-                            .map(|v| v.credit)
-                            .collect::<Vec<f64>>()
-                    );
-
-                    let data_server = Arc::clone(&data_server);
-                    async move { Ok::<_, Infallible>(data_server.process_request(req).await.unwrap()) }
+                    let ds = Arc::clone(&data_server);
+                    async move { Ok::<_, Infallible>(ds.process_request(req).await.unwrap()) }
                 }))
             }
         });
 
+        let port: usize = 1337; // TODO: Make this configurable
+        let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
         let server = Server::bind(&addr).serve(service);
-
         server.await?;
+
         Ok(())
     }
 
-    /// Helper function
-    async fn body_to_string(
-        body: Body,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        // Convert the body into bytes
-        let bytes = body::to_bytes(body).await?;
+    /// Handle requests and route them to handlers
+    async fn process_request(&self, req: Request<Body>) -> Result<Response<Body>, ServerError> {
+        let response: Response<Body> = match (req.method(), req.uri().path()) {
+            (_, "/api/login") => {
+                let str = Self::body_to_string(req.into_body()).await.unwrap();
+                let message: Message = match serde_json::from_str(&str) {
+                    Ok(s) => s,
+                    Err(err) => return Err(ServerError::from(err)),
+                };
 
-        // Convert the bytes into a string
-        let string = String::from_utf8(bytes.to_vec())
-            .map_err(|err| format!("{err}: Error while converting bytes to string"))?;
+                let return_message = self.process_login(&message).await;
+                let s = serde_json::to_string(&return_message).unwrap();
 
-        Ok(string)
+                Response::new(Body::from(s))
+            }
+            (_, "/api/chat") => {
+                let str = Self::body_to_string(req.into_body()).await.unwrap();
+                let message: Message = match serde_json::from_str(&str) {
+                    Ok(s) => s,
+                    Err(err) => return Err(ServerError::from(err)),
+                };
+
+                let return_message = self.process_chat_request(&message).await;
+                let s = serde_json::to_string(&return_message).unwrap();
+                Response::new(Body::from(s))
+            }
+            (_, "/api/logout") => {
+                let str = Self::body_to_string(req.into_body()).await.unwrap();
+                let message: Message = match serde_json::from_str(&str) {
+                    Ok(s) => s,
+                    Err(err) => return Err(ServerError::from(err)),
+                };
+                let return_message = self.process_logout(&message).await;
+                let s = serde_json::to_string(&return_message).unwrap();
+                Response::new(Body::from(s))
+            }
+
+            // Catch-all 404.
+            _ => Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("404 Not Found"))
+                .unwrap(),
+        };
+        Ok(response)
     }
 
     /// Check that a request is valid.  It exists and has not expired.
@@ -239,8 +252,8 @@ impl AppBackend {
         let response: ChatResponse = {
             let start = Instant::now();
             // Forced unwrap OK because comm_type is ChatPrompt
-            let prompt: ChatPrompt =
-                serde_json::from_str(&message.object).expect("Should be a ChatPrompt");
+            let prompt: ChatPrompt = serde_json::from_str(&message.object)
+                .unwrap_or_else(|_| panic!("Should be a ChatPrompt: {}", &message.object));
             let token = prompt.token.clone();
             {
                 // Must verify the request
@@ -268,7 +281,7 @@ impl AppBackend {
             "model": prompt.model.as_str(),
             "temperature": prompt.temperature,
                 });
-
+            eprintln!("Data sending to AI server: {data}");
             // Send the request to the LLM
             let response_result: Result<(HashMap<String, String>, ChatRequestInfo), Message> =
                 tokio::task::spawn_blocking(
@@ -320,34 +333,19 @@ impl AppBackend {
                 let mut session_ref = self.sessions.lock().unwrap();
                 let session_ref = (*session_ref).get_mut(token.as_str()).unwrap();
 
-                eprint!(
-                    "Process chat request {message}: Cost: {cost} and Credit: {:0.4} ",
-                    session_ref.credit
-                );
                 session_ref.credit -= cost;
-                eprintln!("-> {:0.4}. ", session_ref.credit);
-
                 credit = session_ref.credit;
                 uuid = session_ref.uuid;
                 level = session_ref.level;
 
                 expire = session_ref.expire;
             }
-            eprintln!(
-                "Second opinion: {}",
-                self.sessions
-                    .lock()
-                    .unwrap()
-                    .get(token.as_str())
-                    .unwrap()
-                    .credit
-            );
             let _ = update_user(uuid, credit, level).await;
             let end = Instant::now();
             let ms = end.duration_since(start); //:.as_micros();
             ChatResponse {
                 expire,
-                model,
+                model: model.as_str().to_string(),
                 cost,
                 response,
                 credit,
@@ -358,104 +356,10 @@ impl AppBackend {
             }
         };
 
-        eprintln!(
-            "done processing: Credit {:?}",
-            (*self.sessions.clone().lock().unwrap())
-                .iter()
-                .map(|(k, v)| {
-                    let s: String = k[0..20].to_string();
-                    (s, v.credit)
-                })
-                .collect::<Vec<(String, f64)>>()
-        );
         Message {
             comm_type: CommType::ChatResponse,
             object: serde_json::to_string(&response).unwrap(),
         }
-    }
-
-    /// Handle requests and route them to handlers
-    async fn process_request(&self, req: Request<Body>) -> Result<Response<Body>, ServerError> {
-        let response: Response<Body> = match (req.method(), req.uri().path()) {
-            (_, "/api/login") => {
-                let str = Self::body_to_string(req.into_body()).await.unwrap();
-                let message: Message = match serde_json::from_str(&str) {
-                    Ok(s) => s,
-                    Err(err) => return Err(ServerError::from(err)),
-                };
-
-                let return_message = self.process_login(&message).await;
-                let s = serde_json::to_string(&return_message).unwrap();
-
-                Response::new(Body::from(s))
-            }
-            (_, "/api/chat") => {
-                let str = Self::body_to_string(req.into_body()).await.unwrap();
-                let message: Message = match serde_json::from_str(&str) {
-                    Ok(s) => s,
-                    Err(err) => return Err(ServerError::from(err)),
-                };
-
-                let return_message = self.process_chat_request(&message).await;
-                eprintln!(
-                    "processed: Credit {:?}",
-                    (*self.sessions.clone().lock().unwrap())
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.credit))
-                        .collect::<Vec<(String, f64)>>()
-                );
-                let s = serde_json::to_string(&return_message).unwrap();
-
-                Response::new(Body::from(s))
-            }
-            (_, "/api/logout") => {
-                let str = Self::body_to_string(req.into_body()).await.unwrap();
-                let message: Message = match serde_json::from_str(&str) {
-                    Ok(s) => s,
-                    Err(err) => return Err(ServerError::from(err)),
-                };
-                let return_message = self.process_logout(&message).await;
-                let s = serde_json::to_string(&return_message).unwrap();
-                Response::new(Body::from(s))
-            }
-
-            // Catch-all 404.
-            _ => Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from("404 Not Found"))
-                .unwrap(),
-        };
-        Ok(response)
-    }
-
-    // Load public certificate from file.
-    fn _load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
-        // Open certificate file.
-        let certfile = fs::File::open(filename)
-            .map_err(|e| _error(format!("failed to open {}: {}", filename, e)))?;
-        let mut reader = io::BufReader::new(certfile);
-
-        // Load and return certificate.
-        let certs = rustls_pemfile::certs(&mut reader)
-            .map_err(|_| _error("failed to load certificate".into()))?;
-        Ok(certs.into_iter().map(rustls::Certificate).collect())
-    }
-
-    // Load private key from file.
-    fn _load_private_key(filename: &str) -> io::Result<rustls::PrivateKey> {
-        // Open keyfile.
-        let keyfile = fs::File::open(filename)
-            .map_err(|e| _error(format!("failed to open {}: {}", filename, e)))?;
-        let mut reader = io::BufReader::new(keyfile);
-
-        // Load and return a single private key.
-        let keys = rustls_pemfile::rsa_private_keys(&mut reader)
-            .map_err(|_| _error("failed to load private key".into()))?;
-        if keys.len() != 1 {
-            return Err(_error("expected a single private key".into()));
-        }
-
-        Ok(rustls::PrivateKey(keys[0].clone()))
     }
 
     // Calculate the cost of a OpenAI chat
@@ -475,9 +379,19 @@ impl AppBackend {
             panic!("{}", model);
         }
     }
+
+    /// Helper function.  TODO:  Hyper must have this
+    async fn body_to_string(
+        body: Body,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let bytes = body::to_bytes(body).await?;
+        let string = String::from_utf8(bytes.to_vec())
+            .map_err(|err| format!("{err}: Error while converting bytes to string"))?;
+        Ok(string)
+    }
 }
 
-/// `ServerError` is....
+
 #[derive(Debug)]
 /// Combine errors
 enum ServerError {
@@ -496,6 +410,7 @@ impl From<hyper::Error> for ServerError {
         ServerError::Hyper(err)
     }
 }
+
 impl From<hyper::http::Error> for ServerError {
     fn from(err: hyper::http::Error) -> ServerError {
         ServerError::HyperHttp(err)
@@ -543,6 +458,7 @@ mod tests {
 
         Ok(req)
     }
+
     fn make_login_request(
         username: String,
         password: String,
@@ -572,6 +488,7 @@ mod tests {
         let login_response: LoginResponse = serde_json::from_str(&result.object).unwrap();
         assert!(!login_response.success);
     }
+
     #[tokio::test]
     async fn bad_message() {
         // Check using incorrect message fails
