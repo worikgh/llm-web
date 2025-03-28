@@ -137,7 +137,6 @@ pub struct ChatResponse {
     pub backend_data: Option<ExtraInfo>,
 }
 
-// Display for CommType
 impl fmt::Display for CommType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -152,14 +151,12 @@ impl fmt::Display for CommType {
     }
 }
 
-// Display for Message
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "comm_type: {}, object: {}", self.comm_type, self.object)
     }
 }
 
-// Display for LoginRequest
 impl fmt::Display for LoginRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -170,14 +167,12 @@ impl fmt::Display for LoginRequest {
     }
 }
 
-// Display for ChatPrompt
 impl fmt::Display for ChatPrompt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "model: {}", self.model)
     }
 }
 
-// Display for LoginResponse
 impl fmt::Display for LoginResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Success: {} ", self.success,)

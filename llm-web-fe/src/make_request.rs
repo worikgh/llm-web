@@ -51,7 +51,7 @@ pub fn make_request(
             let response = xhr_clone.response_text().unwrap().unwrap();
             // Do something with response..
             let message: Message = serde_json::from_str(response.as_str()).unwrap();
-            print_to_console("Data arrived");
+            print_to_console(format!("Data arrived. _data: {_data:?}"));
             callback_onload(message);
         }
     }) as Box<dyn FnMut(_)>);

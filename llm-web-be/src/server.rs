@@ -300,7 +300,7 @@ impl AppBackend {
                     },
                 )
                 .await
-                .unwrap();
+                .expect("Could not get result from the server");
 
             let chat_response: (HashMap<String, String>, ChatRequestInfo) = match response_result {
                 Ok(response) => response,
@@ -376,7 +376,7 @@ impl AppBackend {
             usage.completion_tokens as f64 * 500_f64 / 1_000_000_f64
                 + usage.prompt_tokens as f64 * 150_f64 / 1_000_000_f64
         } else {
-            panic!("{}", model);
+            panic!("Calculateing cost.  Unknown model: {} ", model);
         }
     }
 
