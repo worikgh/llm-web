@@ -375,6 +375,9 @@ impl AppBackend {
         } else if model.starts_with("gpt-3") {
             usage.completion_tokens as f64 * 500_f64 / 1_000_000_f64
                 + usage.prompt_tokens as f64 * 150_f64 / 1_000_000_f64
+        } else if model.starts_with("o1-") {
+            usage.completion_tokens as f64 * 6000_f64 / 1_000_000_f64
+                + usage.prompt_tokens as f64 * 1500_f64 / 1_000_000_f64
         } else {
             panic!("Calculateing cost.  Unknown model: {} ", model);
         }
